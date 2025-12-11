@@ -1,0 +1,5 @@
+{
+  "name": "Kyoki",
+  "description": "A production-grade, multi-platform PWA for generating FAANG-level software engineering blueprints using advanced AI reasoning. Supports BYOK for major LLMs.",
+  "requestFramePermissions": []
+}

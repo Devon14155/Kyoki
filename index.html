@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Kyoki - Blueprint Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              background: 'rgb(var(--background) / <alpha-value>)',
+              surface: 'rgb(var(--surface) / <alpha-value>)',
+              primary: '#2563eb',    
+              secondary: '#475569', 
+              accent: '#3b82f6',     
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      :root {
+        /* Light Mode Defaults */
+        --background: 248 250 252; /* slate-50 */
+        --surface: 255 255 255;    /* white */
+        --text-main: 15 23 42;     /* slate-900 */
+      }
+      
+      .dark {
+        /* Dark Mode Overrides */
+        --background: 2 6 23;      /* slate-950 */
+        --surface: 15 23 42;       /* slate-900 */
+        --text-main: 248 250 252;  /* slate-50 */
+      }
+
+      body {
+        background-color: rgb(var(--background));
+        color: rgb(var(--text-main));
+        transition: background-color 0.3s, color 0.3s;
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #94a3b8; 
+        border-radius: 4px;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #334155; 
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #64748b; 
+      }
+      .dark ::-webkit-scrollbar-thumb:hover {
+        background: #475569; 
+      }
+      
+      @media print {
+        body { background-color: white; color: black; }
+        .print\:hidden { display: none !important; }
+        .print\:text-black { color: black !important; }
+        .print\:bg-white { background-color: white !important; }
+        .print\:overflow-visible { overflow: visible !important; }
+        .print\:pt-0 { padding-top: 0 !important; }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.6",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "mermaid": "https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.esm.min.mjs"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
