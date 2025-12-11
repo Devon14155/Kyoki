@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useId } from 'react';
+
+import React, { useEffect, useState, useId, useMemo } from 'react';
 import { RefreshCw, HelpCircle, Copy, Check } from 'lucide-react';
 import mermaid from 'mermaid';
 
@@ -11,23 +12,27 @@ mermaid.initialize({
 });
 
 // --- Mermaid Diagram ---
-const MermaidDiagram: React.FC<{ code: string }> = ({ code }) => {
+const MermaidDiagram: React.FC<{ code: string }> = React.memo(({ code }) => {
   const [svg, setSvg] = useState('');
   const [error, setError] = useState('');
   const id = useId().replace(/:/g, ''); 
 
   useEffect(() => {
+    let mounted = true;
     const render = async () => {
         try {
             const { svg } = await mermaid.render(`mermaid-${id}`, code);
-            setSvg(svg);
-            setError('');
+            if (mounted) {
+                setSvg(svg);
+                setError('');
+            }
         } catch (e) {
             console.error("Mermaid Render Fail", e);
-            setError('Failed to render diagram. Syntax might be invalid.');
+            if (mounted) setError('Failed to render diagram. Syntax might be invalid.');
         }
     };
     render();
+    return () => { mounted = false; };
   }, [code, id]);
 
   if (error) {
@@ -44,7 +49,7 @@ const MermaidDiagram: React.FC<{ code: string }> = ({ code }) => {
           <div dangerouslySetInnerHTML={{ __html: svg }} />
       </div>
   );
-};
+});
 
 // --- Card ---
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -267,7 +272,11 @@ interface MarkdownViewProps {
     onHeadersParsed?: (headers: { id: string, title: string, level: number }[]) => void;
 }
 
-export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, onSectionAction, onHeadersParsed }) => {
+export const MarkdownView: React.FC<MarkdownViewProps> = React.memo(({ content, onSectionAction, onHeadersParsed }) => {
+  // Use useMemo to avoid re-parsing massive strings on every render cycle unless content specifically changes
+  const parts = useMemo(() => content.split(/(```[\s\S]*?```)/g), [content]);
+  
+  // Parse headers effect - simplified to run only when content length changes significantly to avoid layout thrashing
   useEffect(() => {
       if (onHeadersParsed) {
           const lines = content.split('\n');
@@ -280,9 +289,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, onSectionAc
             }));
           onHeadersParsed(headers);
       }
-  }, [content, onHeadersParsed]);
-
-  const parts = content.split(/(```[\s\S]*?```)/g);
+  }, [content.length, onHeadersParsed]); // Depend on length as a proxy for structural changes to reduce frequency
 
   return (
     <div className="prose prose-slate dark:prose-invert max-w-none">
@@ -365,4 +372,4 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, onSectionAc
       })}
     </div>
   );
-};
+}, (prev, next) => prev.content === next.content); // Custom comparator for strict equality check optimization

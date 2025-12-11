@@ -192,13 +192,24 @@ export const generateJSON = async (prompt: string, apiKey: string, model: ModelT
         });
     }
 
-    // 2. Fallback Path for others (Regex Extraction)
+    // 2. Fallback Path for others (Regex Extraction & Markdown stripping)
     let full = "";
     await generateBlueprintStream(prompt, apiKey, model, settings, (c) => full += c, system + "\nOutput strictly valid JSON.");
+    
+    // Improved cleaning for non-native JSON models
     try {
-        const jsonMatch = full.match(/\{[\s\S]*\}/);
-        return JSON.parse(jsonMatch ? jsonMatch[0] : full);
-    } catch (e) { return {}; }
+        // Strip markdown code blocks if present
+        const markdownCleaned = full.replace(/```json\n?|\n?```/g, '');
+        
+        // Find JSON object if mixed with text
+        const jsonMatch = markdownCleaned.match(/\{[\s\S]*\}/);
+        const jsonStr = jsonMatch ? jsonMatch[0] : markdownCleaned;
+        
+        return JSON.parse(jsonStr);
+    } catch (e) { 
+        console.warn("JSON Parse Failed", e, full);
+        return {}; 
+    }
 };
 
 export const checkApiKey = async (key: string, model: ModelType): Promise<boolean> => {

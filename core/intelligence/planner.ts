@@ -21,8 +21,7 @@ export const planner = {
                 desc: 'Design the interaction layer, Design System, and Screen Flows (Mermaid).',
                 deps: ['Requirements']
             },
-            // PARALLEL TRACK START: Frontend and Backend can now run simultaneously 
-            // as they both depend on Requirements & Design, but not each other initially.
+            // PARALLEL TRACK START
             {
                 role: 'FRONTEND_ENGINEER',
                 section: 'Frontend Architecture',
@@ -48,7 +47,6 @@ export const planner = {
                 desc: 'Perform STRIDE analysis, define AuthZ matrices, and Security Controls.',
                 deps: ['Backend Architecture', 'Frontend Architecture', 'Data Model']
             },
-            // PARALLEL TRACK: DevOps and QA can mostly run concurrently once Arch is defined
             {
                 role: 'PLATFORM_ENGINEER',
                 section: 'Infrastructure & DevOps',
@@ -63,24 +61,34 @@ export const planner = {
             }
         ];
 
-        pipeline.forEach((step, index) => {
-            // Resolve dependency names to task IDs
-            // Note: This relies on topological ordering in the array above
-            const deps = (step.deps || []).map(d => {
-                const found = tasks.find(t => t.section === d);
-                return found ? found.id : '';
-            }).filter(d => d);
-
+        // 1. First Pass: Create Tasks with UUIDs and Map Section Names to IDs
+        const sectionToIdMap = new Map<string, string>();
+        
+        pipeline.forEach((step) => {
+            const taskId = crypto.randomUUID();
+            sectionToIdMap.set(step.section, taskId);
+            
             tasks.push({
-                id: `task-${index}`,
+                id: taskId,
                 role: step.role,
                 section: step.section,
                 description: step.desc,
-                dependencies: deps,
+                dependencies: [], // Will fill in pass 2
                 budget: { tokens: 3000, time_ms: 45000 },
                 priority: 1,
                 status: 'PENDING'
             });
+        });
+
+        // 2. Second Pass: Link Dependencies using IDs
+        pipeline.forEach((step) => {
+            const currentTaskId = sectionToIdMap.get(step.section);
+            const currentTask = tasks.find(t => t.id === currentTaskId);
+            
+            if (currentTask && step.deps) {
+                const depIds = step.deps.map(depSection => sectionToIdMap.get(depSection)).filter(id => id !== undefined) as string[];
+                currentTask.dependencies = depIds;
+            }
         });
 
         return {
