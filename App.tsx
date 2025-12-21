@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
@@ -6,6 +7,7 @@ import { Editor } from './pages/Editor';
 import { SettingsPage } from './pages/Settings';
 import { Library } from './pages/Library';
 import { ContextManager } from './pages/ContextManager';
+import { ChatHistory } from './pages/ChatHistory'; // Import
 import { DevTools } from './pages/DevTools';
 import { storageService } from './services/storage';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -29,6 +31,7 @@ const App = () => {
             <Route path="/" element={<Dashboard />} />
             <Route path="/editor/new" element={<Editor />} />
             <Route path="/editor/:id" element={<Editor />} />
+            <Route path="/chats" element={<ChatHistory />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/library" element={<Library />} />
             <Route path="/context" element={<ContextManager />} />

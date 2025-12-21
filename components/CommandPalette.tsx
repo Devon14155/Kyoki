@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -13,6 +14,13 @@ interface CommandPaletteProps {
     onClose: () => void;
 }
 
+interface PaletteItem {
+    label: string;
+    icon: any;
+    action: () => void;
+    meta?: string;
+}
+
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
     const navigate = useNavigate();
     const [query, setQuery] = useState('');
@@ -21,7 +29,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
     useEffect(() => {
         if (isOpen) {
-            setBlueprints(storageService.getBlueprints());
+            storageService.getBlueprints().then(setBlueprints);
             setQuery('');
             setSelectedIndex(0);
         }
@@ -31,14 +39,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
         .filter(b => b.title.toLowerCase().includes(query.toLowerCase()))
         .slice(0, 5);
 
-    const actions = [
+    const actions: PaletteItem[] = [
         { label: 'New Blueprint', icon: PlusSquare, action: () => navigate('/editor/new') },
         { label: 'Go to Library', icon: Library, action: () => navigate('/library') },
         { label: 'Go to Context', icon: Database, action: () => navigate('/context') },
         { label: 'Settings', icon: Settings, action: () => navigate('/settings') },
     ].filter(a => a.label.toLowerCase().includes(query.toLowerCase()));
 
-    const allItems = [...actions, ...filteredBlueprints.map(b => ({
+    const allItems: PaletteItem[] = [...actions, ...filteredBlueprints.map(b => ({
         label: b.title,
         icon: FileText,
         action: () => navigate(`/editor/${b.id}`),

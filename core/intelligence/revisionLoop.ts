@@ -1,3 +1,5 @@
+
+
 import { eventBus } from './eventBus';
 import { dispatcher } from './dispatcher';
 import { TOOLS } from './tools';
@@ -83,7 +85,7 @@ export const revisionLoop = {
                 );
                 
                 // Explicit cast to avoid type inference issues
-                const responseStr = response as string;
+                const responseStr = String(response);
                 updatedArtifacts[section] = responseStr;
                 eventBus.emit(eventBus.createEnvelope(jobId, 'DISPATCH', 'MODEL_RESPONSE', { role: agentRole, length: responseStr.length }));
             } catch (e: any) {

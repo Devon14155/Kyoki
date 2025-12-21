@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { 
@@ -9,7 +10,8 @@ import {
   Menu, 
   X,
   Zap,
-  Search
+  Search,
+  MessageSquare
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 
@@ -56,6 +58,7 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: PlusSquare, label: 'New Blueprint', path: '/editor/new' },
+    { icon: MessageSquare, label: 'Team Chat', path: '/chats' },
     { icon: Library, label: 'Library', path: '/library' },
     { icon: Database, label: 'Context', path: '/context' },
     { icon: Settings, label: 'Settings', path: '/settings' },

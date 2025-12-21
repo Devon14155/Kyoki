@@ -2,7 +2,7 @@
 // Adapter: Bridges the synchronous UI expectations (from original design) with the Async DB
 // NOTE: UI Components must be updated to await these calls.
 
-import { AppSettings, Blueprint, ContextItem, Folder, Project } from '../types';
+import { AppSettings, Blueprint, ContextItem, Folder, Project, Conversation } from '../types';
 import { db } from './db';
 import { securityService } from './security';
 import { projectManager } from '../core/projectManager';
@@ -90,4 +90,8 @@ export const storageService = {
   getContextItems: async (): Promise<ContextItem[]> => db.getAll<ContextItem>('context'),
   saveContextItem: async (c: ContextItem) => db.put('context', c),
   deleteContextItem: async (id: string) => db.delete('context', id),
+
+  // Conversations
+  getConversations: async (): Promise<Conversation[]> => db.getAll<Conversation>('conversations'),
+  deleteConversation: async (id: string) => db.delete('conversations', id),
 };

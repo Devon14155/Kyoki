@@ -161,7 +161,7 @@ export const Input = ({ className = '', ...props }: React.InputHTMLAttributes<HT
 );
 
 // --- CodeBlock ---
-const CodeBlock: React.FC<{ language: string, code: string }> = ({ language, code }) => {
+export const CodeBlock: React.FC<{ language: string, code: string }> = ({ language, code }) => {
     const [copied, setCopied] = React.useState(false);
 
     const handleCopy = () => {
@@ -295,7 +295,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = React.memo(({ content, 
     <div className="prose prose-slate dark:prose-invert max-w-none">
       {parts.map((part, index) => {
         if (part.startsWith('```')) {
-          const match = part.match(/```(\w*)\n([\s\S]*?)```/);
+          const match = part.match(/```(\w*)\n([\s\S]*?)\n?```/); // Improved regex to handle trailing newlines gracefully
           if (match) {
             const lang = match[1];
             const code = match[2];
@@ -304,6 +304,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = React.memo(({ content, 
             }
             return <CodeBlock key={index} language={lang} code={code} />;
           }
+          // Fallback for empty blocks
           return null;
         } else {
           const sections = part.split(/^(#+ .*)/m);
