@@ -3,13 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Blueprint, ModelType, AppSettings, AgentConfig, Message } from '../types';
 import { storageService } from '../services/storage';
-import { explainSectionStream, regenerateSectionStream } from '../services/aiService';
 import { Button, MarkdownView, Badge } from '../components/UI';
 import { useIntelligence } from '../hooks/useIntelligence';
 import { useChat } from '../hooks/useChat';
 import { ChatContainer } from '../components/chat/ChatContainer';
 import { 
-    Save, RefreshCw, Download, Printer, List, X, ShieldAlert, CheckCircle2, Menu 
+    Save, RefreshCw, Download, List, X, ShieldAlert, CheckCircle2, Bot 
 } from 'lucide-react';
 
 export const Editor = () => {
@@ -63,14 +62,15 @@ export const Editor = () => {
   // --- Hooks ---
   const { 
       isGenerating, jobStatus, runPlan, liveEvents, activeTaskId, 
-      startJob, pauseJob, resumeJob, retryTask 
+      startJob, pauseJob, dispatchTask 
   } = useIntelligence(blueprint?.id);
 
   const {
       conversation,
       addMessage,
       updateLastMessage,
-      addArtifact
+      sendMessage,
+      isTyping
   } = useChat(blueprint?.id);
 
   // --- Auto-Trigger Initial Prompt ---
@@ -82,31 +82,24 @@ export const Editor = () => {
       }
   }, [blueprint, initialPrompt]);
 
-  // --- Sync Events to Chat ---
-  // We use liveEvents to update the "Thinking" message or add artifact cards
+  // --- Sync Intelligence Events to Chat UI ---
   useEffect(() => {
-      if (!isGenerating || liveEvents.length === 0) return;
+      if (liveEvents.length === 0) return;
       
       const lastEvent = liveEvents[liveEvents.length - 1];
 
-      // Update thinking message
-      if (lastEvent.eventType === 'TASK_STARTED') {
-          updateLastMessage(`**${lastEvent.payload.role}**: ${lastEvent.payload.message || 'Starting task...'}`, true);
+      // If a task starts, show it in chat if it's relevant
+      if (lastEvent.eventType === 'TASK_STARTED' && lastEvent.phase === 'DISPATCH') {
+          // We could update the 'Thinking' bubble here to show exactly what's happening
+          // For now, we rely on the ChatContainer's ProgressIndicator overlay
       }
       
-      // When a task completes, we technically have an artifact.
-      // Ideally, the Supervisor or Intelligence hook would give us the artifact content directly.
-      // For now, we rely on the Supervisor updating the Blueprint content in DB,
-      // and we can extract it if needed, OR we just show progress.
-      
-      // If job finishes
+      // If job finishes, refresh the blueprint document
       if (lastEvent.phase === 'FINALIZE') {
-          updateLastMessage("✅ **Blueprint Generation Complete.** Review the document on the right.", false);
-          // Refresh blueprint
           if (blueprint) storageService.getBlueprint(blueprint.id).then(b => b && setBlueprint(b));
       }
 
-  }, [liveEvents, isGenerating]);
+  }, [liveEvents]);
 
 
   const handleSend = async (text: string, files?: File[]) => {
@@ -114,31 +107,30 @@ export const Editor = () => {
       const settingsFull = storageService.getSettings();
       const apiKey = availableKeys[settingsFull.activeModel] || '';
 
-      // 1. Add User Message
-      await addMessage({
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: text,
-          timestamp: Date.now()
-      });
-
-      // 2. Add Placeholder "Thinking" Message
-      await addMessage({
-          id: crypto.randomUUID(),
-          role: 'thinking',
-          content: 'Initializing agents...',
-          timestamp: Date.now()
-      });
-
-      // 3. Start Job
-      // Note: In a real chat, we'd distinguish between "Chat" vs "Generate".
-      // For Kyoki, we assume main input triggers generation if it looks like a requirement.
-      // We pass the full text as the prompt.
-      try {
-          await startJob(blueprint, text, apiKey, settingsFull.activeModel, settings);
-      } catch (e: any) {
-          updateLastMessage(`❌ Error: ${e.message}`, false);
-      }
+      // Delegate to Chat Hook which handles Routing (Chat vs Agent Job)
+      await sendMessage(
+          text,
+          blueprint,
+          apiKey,
+          settingsFull.activeModel,
+          settings,
+          // Callback to start full pipeline
+          async () => {
+              await startJob(blueprint, text, apiKey, settingsFull.activeModel, settings);
+          },
+          // Callback to dispatch single task
+          async (role, prompt) => {
+              // We need an active job ID to dispatch tasks. 
+              // If none exists (e.g. chat only session), we might need to start a "shell" job or attach to previous.
+              // For robustness, if no active job, we start one in background.
+              // However, useIntelligence handles this state internally usually.
+              // We'll pass the Blueprint content as context.
+              const context = { 'Current Blueprint': blueprint.content };
+              await dispatchTask(role, prompt, context);
+              // Refresh blueprint after task
+              storageService.getBlueprint(blueprint.id).then(b => b && setBlueprint(b));
+          }
+      );
   };
 
   const handleStop = async () => {
@@ -174,18 +166,18 @@ export const Editor = () => {
           <button onClick={() => setShowMobileChat(false)} className={`flex-1 font-medium text-sm ${!showMobileChat ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600' : 'text-slate-500'}`}>Blueprint</button>
       </div>
 
-      {/* --- Left Panel: New Chat Interface --- */}
-      <div className={`flex-col border-r border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/30 flex transition-all duration-300 relative ${showMobileChat ? 'flex w-full md:w-[450px] lg:w-[500px]' : 'hidden md:flex md:w-[450px] lg:w-[500px]'}`}>
+      {/* --- Left Panel: Chat Interface --- */}
+      <div className={`flex-col border-r border-slate-200 dark:border-slate-800 bg-[#0f0f0f] flex transition-all duration-300 relative ${showMobileChat ? 'flex w-full md:w-[450px] lg:w-[500px]' : 'hidden md:flex md:w-[450px] lg:w-[500px]'}`}>
           {conversation && (
               <ChatContainer 
                 messages={conversation.messages}
                 tasks={runPlan?.tasks || []}
                 activeTaskId={activeTaskId}
-                isGenerating={isGenerating}
+                isGenerating={isGenerating || isTyping}
                 onSend={handleSend}
                 onStop={handleStop}
                 config={conversation.metadata.agentConfig}
-                onConfigChange={(c) => {/* Update config in DB */}}
+                onConfigChange={(c) => {/* Update config logic */}}
               />
           )}
       </div>
@@ -262,6 +254,3 @@ export const Editor = () => {
     </div>
   );
 };
-
-// Simple icon for empty state
-import { Bot } from 'lucide-react';

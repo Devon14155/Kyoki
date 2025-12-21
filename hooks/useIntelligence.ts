@@ -19,6 +19,7 @@ export interface UseIntelligenceReturn {
     pauseJob: () => Promise<void>;
     resumeJob: () => Promise<void>;
     retryTask: (taskId: string) => Promise<void>;
+    dispatchTask: (role: string, instruction: string, context: Record<string, string>) => Promise<string>;
     
     // Derived
     activeTaskId: string | null; // The task currently selected or running
@@ -125,6 +126,11 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
         if (activeJobId) await supervisor.retryTask(activeJobId, taskId);
     }, [activeJobId]);
 
+    const dispatchTask = useCallback(async (role: string, instruction: string, context: Record<string, string>) => {
+        if (!activeJobId) throw new Error("No active job session");
+        return await supervisor.dispatchAgentTask(activeJobId, role, instruction, context);
+    }, [activeJobId]);
+
     return {
         isGenerating: jobStatus === 'RUNNING',
         jobStatus,
@@ -135,6 +141,7 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
         pauseJob,
         resumeJob,
         retryTask,
+        dispatchTask,
         activeTaskId,
         setActiveTaskId
     };

@@ -1,5 +1,4 @@
 
-
 import { db } from '../../services/db';
 import { eventBus } from './eventBus';
 import { planner } from './planner';
@@ -50,6 +49,66 @@ export class Supervisor {
         });
 
         return jobId;
+    }
+
+    // --- NEW: Ad-Hoc Agent Dispatch for Chat ---
+    async dispatchAgentTask(
+        jobId: string,
+        role: string,
+        instruction: string,
+        contextArtifacts: Record<string, string>
+    ): Promise<string> {
+        const job = await db.get<IntelligenceJob>('jobs', jobId);
+        if (!job || !job.contextConfig) throw new Error("Active job context required for ad-hoc tasks");
+
+        const taskId = crypto.randomUUID();
+        const task: Task = {
+            id: taskId,
+            role,
+            section: 'Ad-Hoc Request', 
+            description: instruction,
+            dependencies: [],
+            budget: { tokens: 2000, time_ms: 30000 },
+            priority: 1,
+            status: 'IN_PROGRESS'
+        };
+
+        this.emit(jobId, 'DISPATCH', 'TASK_STARTED', { 
+            message: `Dispatching ${role} for ad-hoc request: "${instruction.slice(0, 50)}..."`,
+            role 
+        });
+
+        try {
+            // Build Ad-Hoc Context
+            let context = `Current Blueprint State:\n`;
+            Object.entries(contextArtifacts).forEach(([k, v]) => {
+                context += `\n--- ${k} ---\n${v.slice(0, 2000)}...`; // Truncate for safety
+            });
+
+            // Dispatch
+            const seed = job.seed || 'adhoc-seed';
+            const response = await dispatcher.dispatchTask(
+                task, 
+                context, 
+                job.contextConfig.apiKey, 
+                job.contextConfig.modelType, 
+                job.contextConfig.settings, 
+                seed
+            );
+
+            this.emit(jobId, 'DISPATCH', 'MODEL_RESPONSE', { 
+                taskId, 
+                role, 
+                length: response.length,
+                message: `${role} completed request.`
+            });
+
+            return response;
+
+        } catch (e: any) {
+            this.emit(jobId, 'DISPATCH', 'SUPERVISOR_ALERT', { error: `Ad-Hoc Task Failed: ${e.message}` }, 'ERROR');
+            throw e;
+        }
     }
 
     async pauseJob(jobId: string) {

@@ -1,11 +1,14 @@
 
-import { useState, useEffect, useCallback } from 'react';
+
+import { useState, useEffect } from 'react';
 import { db } from '../services/db';
-import { Conversation, Message, Blueprint, Artifact } from '../types';
+import { chatService } from '../services/chatService';
+import { Conversation, Message, Blueprint, Artifact, AppSettings, ModelType } from '../types';
 
 export const useChat = (blueprintId: string | undefined) => {
     const [conversation, setConversation] = useState<Conversation | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isTyping, setIsTyping] = useState(false);
 
     // Load or Initialize Conversation
     useEffect(() => {
@@ -79,11 +82,7 @@ export const useChat = (blueprintId: string | undefined) => {
         const msgs = [...conversation.messages];
         const last = msgs[msgs.length - 1];
         
-        // If last message was thinking and we are done, remove thinking
         if (last.role === 'thinking' && !isThinking) {
-             // Replace thinking with assistant response or just remove if we are adding a separate msg
-             // Strategy: The 'Thinking' message acts as a placeholder.
-             // If we update it, we can change role to assistant.
              const updated = { 
                  ...last, 
                  content: content, 
@@ -100,31 +99,118 @@ export const useChat = (blueprintId: string | undefined) => {
         await saveConversation({ ...conversation, messages: msgs });
     };
 
-    const addArtifact = async (artifact: Artifact) => {
+    // Main Chat Logic
+    const sendMessage = async (
+        text: string, 
+        blueprint: Blueprint | null,
+        apiKey: string,
+        modelType: ModelType,
+        settings: AppSettings['safety'],
+        startJobCallback: () => Promise<void>,
+        dispatchTaskCallback: (role: string, prompt: string) => Promise<void>
+    ) => {
         if (!conversation) return;
-        const exists = conversation.artifacts.some(a => a.filename === artifact.filename);
-        let newArtifacts = conversation.artifacts;
-        
-        if (exists) {
-            newArtifacts = conversation.artifacts.map(a => a.filename === artifact.filename ? artifact : a);
-        } else {
-            newArtifacts = [...conversation.artifacts, artifact];
-        }
-        
-        await saveConversation({ ...conversation, artifacts: newArtifacts });
-    };
 
+        // 1. User Message
+        await addMessage({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: text,
+            timestamp: Date.now()
+        });
+
+        setIsTyping(true);
+
+        // 2. Decision Logic
+        // Case A: Blueprint is empty or very short -> Treat as "Generate New"
+        if (!blueprint || !blueprint.content || blueprint.content.length < 50) {
+            await addMessage({
+                id: crypto.randomUUID(),
+                role: 'thinking',
+                content: 'Initializing full engineering pipeline...',
+                timestamp: Date.now()
+            });
+            await startJobCallback(); // Triggers the Supervisor Pipeline
+            setIsTyping(false);
+            return;
+        }
+
+        // Case B: Modification Request -> Trigger specific agent
+        if (chatService.isModificationRequest(text)) {
+            const role = chatService.detectAgentRole(text);
+            await addMessage({
+                id: crypto.randomUUID(),
+                role: 'thinking',
+                content: `Dispatching ${role.replace('_', ' ')} to handle modification...`,
+                timestamp: Date.now()
+            });
+            
+            try {
+                await dispatchTaskCallback(role, text);
+                await updateLastMessage(`✅ ${role} has processed your request.`, false);
+            } catch (e: any) {
+                await updateLastMessage(`❌ Failed to execute agent task: ${e.message}`, false);
+            }
+            setIsTyping(false);
+            return;
+        }
+
+        // Case C: Standard Q&A (Chat)
+        await addMessage({
+            id: crypto.randomUUID(),
+            role: 'assistant', // Start directly as assistant for streaming
+            content: '',
+            timestamp: Date.now()
+        });
+
+        try {
+            let fullResponse = "";
+            await chatService.streamChatResponse(
+                [...conversation.messages, { role: 'user', content: text }],
+                blueprint,
+                apiKey,
+                modelType,
+                settings,
+                (chunk) => {
+                    fullResponse += chunk;
+                    // Real-time update (debounced in UI ideally, but here direct)
+                    // We directly mutate state for stream speed, then save final
+                    setConversation(prev => {
+                        if (!prev) return null;
+                        const msgs = [...prev.messages];
+                        msgs[msgs.length - 1].content = fullResponse;
+                        return { ...prev, messages: msgs };
+                    });
+                }
+            );
+            // Final Save
+            if (conversation) {
+                // Fetch fresh state to avoid closure staleness issues
+                // (Simplified: We rely on the setConversation updater pattern above)
+                const msgs = [...conversation.messages];
+                msgs[msgs.length - 1].content = fullResponse;
+                await saveConversation({ ...conversation, messages: msgs });
+            }
+        } catch (e: any) {
+            await updateLastMessage(`❌ Chat Error: ${e.message}`, false);
+        } finally {
+            setIsTyping(false);
+        }
+    };
+    
     const clearHistory = async () => {
         if (!conversation) return;
-        await saveConversation({ ...conversation, messages: [], artifacts: [] });
+        const updated = { ...conversation, messages: [] };
+        await saveConversation(updated);
     };
 
     return {
         conversation,
         loading,
+        isTyping,
         addMessage,
         updateLastMessage,
-        addArtifact,
+        sendMessage,
         clearHistory
     };
 };
