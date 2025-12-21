@@ -1,4 +1,5 @@
 
+
 import { db } from '../../services/db';
 import { eventBus } from './eventBus';
 import { planner } from './planner';
@@ -269,10 +270,11 @@ export class Supervisor {
         const consensus = mmce.process(task.id, response, modelType);
         await db.put('consensus', consensus); // Single Source of Truth
         
-        // 3. Tools
+        // 3. Tools - Enhanced for v3.1
         const toolResults = this.executeTools(task.role, consensus.final, artifacts);
         toolResults.forEach(res => {
-            this.emit(job.id, 'TOOL_EXECUTION', 'TOOL_RESULT', res, res.success ? 'INFO' : 'WARN');
+            const level = res.success ? 'INFO' : 'WARN';
+            this.emit(job.id, 'TOOL_EXECUTION', 'TOOL_RESULT', res, level);
         });
 
         // 4. Grounding
@@ -289,18 +291,40 @@ export class Supervisor {
     private executeTools(role: string, content: string, artifacts: Record<string, string>): ToolOutput[] {
         const results: ToolOutput[] = [];
 
+        // Universal Tools
         results.push(TOOLS.securityScanner(content));
-
         if (content.includes('```mermaid')) {
             results.push(TOOLS.mermaidValidator(content));
         }
 
+        // Context-Aware Tools
         if (role === 'PLATFORM_ENGINEER') {
             results.push(TOOLS.costEstimator(content));
+            results.push(TOOLS.dependencyAnalyzer(artifacts));
         }
 
-        if (role === 'BACKEND_ARCHITECT' && artifacts['Frontend Architecture']) {
-            results.push(TOOLS.contractVerifier(artifacts['Frontend Architecture'], content));
+        if (role === 'BACKEND_ARCHITECT') {
+            results.push(TOOLS.apiContractLinter(content));
+            if (artifacts['Frontend Architecture']) {
+                results.push(TOOLS.contractVerifier(artifacts['Frontend Architecture'], content));
+            }
+        }
+
+        if (role === 'PERFORMANCE_ARCHITECT') {
+            results.push(TOOLS.scalabilitySimulator(artifacts));
+        }
+
+        if (role === 'COMPLIANCE_ENGINEER') {
+            results.push(TOOLS.complianceChecker(artifacts));
+        }
+
+        if (role === 'FRONTEND_ENGINEER') {
+             results.push(TOOLS.techStackValidator(artifacts));
+             results.push(TOOLS.licenseChecker(artifacts));
+        }
+
+        if (role === 'ARCHITECTURE_COHERENCE_CHECKER') {
+             results.push(TOOLS.architectureCoherenceChecker(artifacts));
         }
 
         return results;

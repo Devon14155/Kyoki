@@ -189,6 +189,8 @@ export interface ToolOutput {
     data?: any;
     logs: string[];
     warnings: string[];
+    findings?: string[];
+    recommendations?: string[];
 }
 
 export interface EventEnvelope {
@@ -224,20 +226,25 @@ export interface IntelligenceJob {
 export const BLUEPRINT_SECTIONS = [
   "Executive Summary",
   "Requirements Breakdown",
+  "Product & Business Metrics",
   "Tech Stack Rationale",
   "High-Level Architecture",
+  "Design System",
+  "Accessibility Architecture",
   "Detailed Backend Architecture",
   "Detailed Frontend Architecture",
+  "Integration Architecture",
   "Data Models / DB Schema",
+  "Performance Architecture",
   "API Specification",
   "State Management",
   "Data Flow Diagrams",
-  "DevOps + CI/CD",
-  "Testing Strategy",
   "Security Model",
-  "Performance & Caching",
-  "Scalability & Fault Tolerance",
-  "Observability & Monitoring",
+  "Compliance Architecture",
+  "Infrastructure & DevOps",
+  "Observability Architecture",
+  "SRE Operational Guide",
+  "Testing Strategy",
   "Risks & Constraints",
   "Alternative Approaches",
   "Implementation Roadmap",
