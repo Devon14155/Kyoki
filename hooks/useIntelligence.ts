@@ -32,14 +32,24 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
     useEffect(() => {
         if (!workerRef.current) {
             try {
-                // Robust Base URL detection for various environments
-                let baseUrl = window.location.href;
-                if (typeof import.meta !== 'undefined' && import.meta.url) {
-                    baseUrl = import.meta.url;
-                }
+                let workerScriptUrl: URL | string;
                 
-                // Ensure we have a valid base before constructing URL
-                const workerScriptUrl = new URL('../core/intelligence/worker.ts', baseUrl);
+                // Robust URL resolution
+                try {
+                    const metaUrl = typeof import.meta !== 'undefined' ? import.meta.url : undefined;
+                    
+                    // If we have a valid module URL that isn't a blob (blobs break relative paths)
+                    if (metaUrl && !metaUrl.startsWith('blob:') && !metaUrl.startsWith('data:')) {
+                        workerScriptUrl = new URL('../core/intelligence/worker.ts', metaUrl);
+                    } else {
+                        // Fallback to absolute path from root origin
+                        // This assumes the app is served with /core/ available at root
+                        workerScriptUrl = new URL('/core/intelligence/worker.ts', window.location.origin);
+                    }
+                } catch (e) {
+                    console.warn("Worker URL construction failed, falling back to string path.");
+                    workerScriptUrl = '/core/intelligence/worker.ts';
+                }
                 
                 workerRef.current = new Worker(workerScriptUrl, { type: 'module' });
                 
