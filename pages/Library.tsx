@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storageService } from '../services/storage';
 import { Blueprint, Folder } from '../types';
-import { Button, Input, Badge } from '../components/UI';
+import { Button, Input, Badge, Skeleton } from '../components/UI';
 import { Search, Trash2, Folder as FolderIcon, FolderPlus, Box, Calendar, FolderOpen, ArrowRight, X } from 'lucide-react';
 
 export const Library = () => {
@@ -14,18 +14,24 @@ export const Library = () => {
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     refreshData();
   }, []);
 
   const refreshData = async () => {
-      const [bps, flds] = await Promise.all([
-          storageService.getBlueprints(),
-          storageService.getFolders()
-      ]);
-      setBlueprints(bps);
-      setFolders(flds);
+      // Keep loading true initially, or set it if refreshing manually
+      try {
+          const [bps, flds] = await Promise.all([
+              storageService.getBlueprints(),
+              storageService.getFolders()
+          ]);
+          setBlueprints(bps);
+          setFolders(flds);
+      } finally {
+          setLoading(false);
+      }
   };
 
   const handleCreateFolder = async () => {
@@ -67,6 +73,35 @@ export const Library = () => {
   const filtered = blueprints
     .filter(b => activeFolderId ? b.folderId === activeFolderId : true)
     .filter(b => b.title.toLowerCase().includes(search.toLowerCase()));
+
+  if (loading) {
+      return (
+        <div className="flex flex-col h-full bg-background p-4 lg:p-12 overflow-y-auto">
+            <div className="max-w-5xl mx-auto space-y-8 w-full">
+                <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                        <Skeleton className="h-8 w-48" />
+                        <Skeleton className="h-4 w-24" />
+                    </div>
+                    <Skeleton className="h-9 w-32" />
+                </div>
+                <Skeleton className="h-10 w-full rounded-lg" />
+                <div className="space-y-4">
+                    <Skeleton className="h-4 w-20" />
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+                    </div>
+                </div>
+                <div className="space-y-4">
+                    <Skeleton className="h-4 w-32" />
+                    <div className="grid grid-cols-1 gap-4">
+                        {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+                    </div>
+                </div>
+            </div>
+        </div>
+      );
+  }
 
   return (
     <div className="flex flex-col h-full bg-background p-4 lg:p-12 overflow-y-auto">

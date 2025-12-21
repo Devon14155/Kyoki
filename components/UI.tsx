@@ -11,6 +11,11 @@ mermaid.initialize({
     fontFamily: 'Inter, sans-serif'
 });
 
+// --- Skeleton Loader ---
+export const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <div className={`animate-pulse bg-slate-200 dark:bg-slate-800 rounded ${className}`} />
+);
+
 // --- Mermaid Diagram ---
 const MermaidDiagram: React.FC<{ code: string }> = React.memo(({ code }) => {
   const [svg, setSvg] = useState('');
