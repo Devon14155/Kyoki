@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
@@ -8,7 +7,6 @@ import { SettingsPage } from './pages/Settings';
 import { Library } from './pages/Library';
 import { ContextManager } from './pages/ContextManager';
 import { DevTools } from './pages/DevTools';
-import { ChatPage } from './pages/ChatPage'; // Import ChatPage
 import { storageService } from './services/storage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -29,7 +27,6 @@ const App = () => {
         <Layout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/chat" element={<ChatPage />} /> {/* New Route */}
             <Route path="/editor/new" element={<Editor />} />
             <Route path="/editor/:id" element={<Editor />} />
             <Route path="/settings" element={<SettingsPage />} />

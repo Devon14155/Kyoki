@@ -82,8 +82,8 @@ export const revisionLoop = {
                     revisionSeed
                 );
                 
-                // Explicit conversion to string to handle potential type inference issues from circular dependencies
-                const responseStr = String(response);
+                // Explicit cast to avoid type inference issues
+                const responseStr = response as string;
                 updatedArtifacts[section] = responseStr;
                 eventBus.emit(eventBus.createEnvelope(jobId, 'DISPATCH', 'MODEL_RESPONSE', { role: agentRole, length: responseStr.length }));
             } catch (e: any) {

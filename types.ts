@@ -223,64 +223,6 @@ export interface IntelligenceJob {
     }
 }
 
-// --- Chat Types ---
-
-export interface Artifact {
-  id: string;
-  filename: string;
-  content: string;
-  type: 'markdown' | 'code' | 'json' | 'diagram';
-  language?: string;
-  generatedBy: string;
-}
-
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant' | 'system' | 'thinking';
-  content: string;
-  timestamp: Date | string; // Support string for JSON serialization
-  agentName?: string;
-  agentIcon?: string;
-  artifacts?: Artifact[];
-  metadata?: {
-    modelUsed: string;
-    tokensUsed?: number;
-    toolsUsed?: string[];
-  };
-}
-
-export interface AgentConfig {
-  enabledAgents: string[];
-  modelSelection: string;
-  tools: {
-    webSearch: boolean;
-    researchMode: boolean;
-    thinkingMode: boolean;
-  };
-}
-
-export interface ConversationContext {
-  projectType?: string;
-  techStack?: string[];
-  requirements?: string[];
-  previousDecisions?: { decision: string; rationale: string }[];
-}
-
-export interface Conversation {
-  id: string;
-  title: string;
-  messages: Message[];
-  artifacts: Artifact[];
-  metadata: {
-    createdAt: Date | string;
-    updatedAt: Date | string;
-    status: 'in-progress' | 'completed' | 'failed';
-    agentConfig: AgentConfig;
-    modelUsed: string;
-  };
-  context: ConversationContext;
-}
-
 export const BLUEPRINT_SECTIONS = [
   "Executive Summary",
   "Requirements Breakdown",

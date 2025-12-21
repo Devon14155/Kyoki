@@ -1,9 +1,8 @@
 
-
-import { Blueprint, Project, ContextItem, Folder, VectorDocument, IntelligenceJob, RunPlan, ConsensusItem, GroundingReport, VerificationReport, Conversation } from '../types';
+import { Blueprint, Project, ContextItem, Folder, VectorDocument, IntelligenceJob, RunPlan, ConsensusItem, GroundingReport, VerificationReport } from '../types';
 
 const DB_NAME = 'KyokiDB';
-const DB_VERSION = 5; 
+const DB_VERSION = 4; 
 
 interface DBSchema {
     projects: Project;
@@ -11,7 +10,6 @@ interface DBSchema {
     jobs: IntelligenceJob; // Upgraded Job type
     context: ContextItem;
     folders: Folder;
-    conversations: Conversation; // New Chat Store
     
     // UKI (Unified Knowledge Index)
     uki_chunks: VectorDocument; // Was 'vectors'
@@ -62,12 +60,6 @@ class KyokiDB {
                 if (!db.objectStoreNames.contains('context')) db.createObjectStore('context', { keyPath: 'id' });
                 if (!db.objectStoreNames.contains('folders')) db.createObjectStore('folders', { keyPath: 'id' });
                 
-                // Chat
-                if (!db.objectStoreNames.contains('conversations')) {
-                    const store = db.createObjectStore('conversations', { keyPath: 'id' });
-                    store.createIndex('by-date', 'metadata.updatedAt');
-                }
-                
                 // UKI
                 if (!db.objectStoreNames.contains('uki_chunks')) {
                     const store = db.createObjectStore('uki_chunks', { keyPath: 'id' });
@@ -75,6 +67,11 @@ class KyokiDB {
                 }
                 if (!db.objectStoreNames.contains('uki_graph')) db.createObjectStore('uki_graph', { keyPath: 'id' });
                 
+                // Vectors legacy mapping (if needed, but we prefer uki_chunks now)
+                if (db.objectStoreNames.contains('vectors') && !db.objectStoreNames.contains('uki_chunks')) {
+                    // In a real migration we'd move data, here we just ensure the new one exists
+                }
+
                 // Intelligence Layer
                 if (!db.objectStoreNames.contains('runplans')) db.createObjectStore('runplans', { keyPath: 'id' });
                 if (!db.objectStoreNames.contains('consensus')) db.createObjectStore('consensus', { keyPath: 'taskId' });
