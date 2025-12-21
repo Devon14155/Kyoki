@@ -11,6 +11,7 @@ import { deterministic } from './deterministic';
 import { TOOLS } from './tools';
 import { revisionLoop } from './revisionLoop';
 import { IntelligenceJob, AppSettings, ModelType, ToolOutput, Task, RunPlan, ConsensusItem } from '../../types';
+import { KYOKI_TOOLS } from '../../services/toolPrompts';
 
 export class Supervisor {
     
@@ -288,21 +289,24 @@ export class Supervisor {
         const consensus = mmce.process(task.id, response, modelType);
         await db.put('consensus', consensus); // Single Source of Truth
         
-        // 3. Tools - Enhanced for v3.1
+        // 3. Heuristic Tools Execution
         const toolResults = this.executeTools(task.role, consensus.final, artifacts);
         toolResults.forEach(res => {
             const level = res.success ? 'INFO' : 'WARN';
             this.emit(job.id, 'TOOL_EXECUTION', 'TOOL_RESULT', res, level);
         });
 
-        // 4. Grounding
+        // 4. Agentic Tools Execution (LLM Based)
+        await this.executeAgenticTools(job.id, task.role, consensus.final, artifacts, job.contextConfig);
+
+        // 5. Grounding
         const groundReport = await grounding.validate(consensus, apiKey, modelType);
         await db.put('grounding', groundReport);
         if (groundReport.status === 'WARN') {
             this.emit(job.id, 'GROUNDING', 'GROUNDING_ISSUE', { taskId: task.id, issues: groundReport.ungroundedClaims.length });
         }
 
-        // 5. Update Local Artifact Map
+        // 6. Update Local Artifact Map
         artifacts[task.section] = consensus.final;
     }
 
@@ -346,6 +350,66 @@ export class Supervisor {
         }
 
         return results;
+    }
+
+    private async executeAgenticTools(
+        jobId: string,
+        role: string, 
+        content: string, 
+        artifacts: Record<string, string>,
+        contextConfig: any
+    ) {
+        // Map roles to tool IDs from services/toolPrompts.ts
+        const mapping: Record<string, string[]> = {
+            'PRODUCT_ARCHITECT': ['requirements-parser', 'complexity-estimator'],
+            'FRONTEND_ENGINEER': ['tech-stack-advisor'],
+            'BACKEND_ARCHITECT': ['architecture-validator', 'scaling-advisor', 'db-optimizer'],
+            'DATA_MODELER': ['db-optimizer'],
+            'STRATEGY_AGENT': ['roadmap-generator', 'blueprint-scorer'],
+            'SECURITY_ENGINEER': ['architecture-validator'],
+            'PLATFORM_ENGINEER': ['scaling-advisor']
+        };
+
+        const toolIds = mapping[role] || [];
+        for (const toolId of toolIds) {
+            const toolDef = KYOKI_TOOLS.find(t => t.id === toolId);
+            if (!toolDef) continue;
+
+            this.emit(jobId, 'TOOL_EXECUTION', 'TASK_STARTED', { message: `Running Agentic Tool: ${toolDef.name}` });
+
+            // Construct Prompt
+            const prompt = `
+            ${toolDef.systemPrompt}
+
+            INPUT ARTIFACT:
+            ${content}
+
+            RELATED ARTIFACTS:
+            ${Object.entries(artifacts).map(([k,v]) => `${k}: ${v.slice(0, 500)}...`).join('\n')}
+            `;
+
+            try {
+                 // Use dispatcher to run the tool with override system prompt
+                 const toolOutput = await dispatcher.dispatchTask(
+                     { id: `${role}_TOOL_${toolId}`, role: 'TOOL_AGENT', description: `Run ${toolDef.name}` },
+                     prompt,
+                     contextConfig.apiKey,
+                     contextConfig.modelType,
+                     contextConfig.settings,
+                     `${jobId}_${toolId}`,
+                     toolDef.systemPrompt // Override System Prompt
+                 );
+
+                 this.emit(jobId, 'TOOL_EXECUTION', 'TOOL_RESULT', { 
+                     toolId: toolDef.name, 
+                     success: true, 
+                     logs: [toolOutput], 
+                     warnings: [] 
+                 });
+            } catch (e: any) {
+                console.error(`Agentic Tool ${toolDef.name} failed`, e);
+            }
+        }
     }
 }
 

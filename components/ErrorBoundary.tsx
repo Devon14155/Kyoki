@@ -17,11 +17,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
     error: null
   };
 
-  // Explicit constructor to help TS inference with props
-  constructor(props: Props) {
-    super(props);
-  }
-
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }

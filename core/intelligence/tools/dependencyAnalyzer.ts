@@ -10,10 +10,6 @@ export function analyzeDependencies(artifacts: Record<string, string>): ToolOutp
     const backendContent = artifacts['Backend Architecture'] || '';
     const infraContent = artifacts['Infrastructure & DevOps'] || '';
     const frontendContent = artifacts['Frontend Architecture'] || '';
-    const dataContent = artifacts['Data Model'] || '';
-
-    // Check for circular dependencies logic placeholder
-    // (Simulated as we don't have a full AST parser in this environment)
     
     // Check for missing dependencies
     if (backendContent.includes('Redis') && !infraContent.includes('Redis') && !infraContent.includes('ElastiCache')) {

@@ -7,9 +7,6 @@ import { ACCESSIBILITY_ENGINEER } from './agents/accessibilityEngineer';
 import { SRE_AGENT } from './agents/sre';
 import { STRATEGY_AGENT } from './agents/strategy';
 
-// Keep the existing ones inline if they don't have dedicated files requested in the prompt, 
-// OR refactor them. For compliance with "files missing" feedback, we are using the new imports for the new/reactivated ones.
-
 export const SYSTEM_PROMPTS = {
     PRODUCT_ARCHITECT: `You are an elite Product Architect at a FAANG company.
     Your goal is to turn abstract user intent into rigorous Engineering Requirements.

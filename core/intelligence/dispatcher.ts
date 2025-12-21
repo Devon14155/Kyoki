@@ -1,3 +1,4 @@
+
 import { generateBlueprintStream } from '../../services/aiService';
 import { AppSettings, ModelType } from '../../types';
 import { deterministic } from './deterministic';
@@ -10,11 +11,12 @@ export const dispatcher = {
         apiKey: string,
         modelType: ModelType,
         settings: AppSettings['safety'],
-        seed: string
+        seed: string,
+        systemPromptOverride?: string // New Parameter
     ): Promise<string> {
         // 1. Construct System Prompt based on Role using Elite Prompts
         const roleKey = task.role as keyof typeof SYSTEM_PROMPTS;
-        const baseSystemPrompt = SYSTEM_PROMPTS[roleKey] || `You are an elite ${task.role}.`;
+        const baseSystemPrompt = systemPromptOverride || SYSTEM_PROMPTS[roleKey] || `You are an elite ${task.role}.`;
         
         const systemPrompt = `${baseSystemPrompt}
         

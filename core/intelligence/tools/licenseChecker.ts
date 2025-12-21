@@ -6,9 +6,6 @@ export function checkLicenseCompliance(artifacts: Record<string, string>): ToolO
     const issues: string[] = [];
     const recommendations: string[] = [];
   
-    // Known problematic licenses
-    // const copyleftLicenses = ['GPL-3.0', 'AGPL-3.0', 'GPL-2.0'];
-  
     // Extract mentioned libraries/frameworks (Simple regex)
     const dependencies = (content.match(/\b[\w-]+@[\d.]+|\b(React|Vue|Django|Flask|Express|MySQL|PostgreSQL|MongoDB)\b/gi) || []);
     const uniqueDeps = [...new Set(dependencies)];
