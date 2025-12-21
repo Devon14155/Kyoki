@@ -1,28 +1,28 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/db';
-import { engine } from '../core/engine';
-import { supervisor } from '../core/intelligence/supervisor';
-import { eventBus } from '../core/intelligence/eventBus';
-import { IntelligenceJob, RunPlan, JobStatus, EventEnvelope, AppSettings, ModelType, Blueprint } from '../types';
+import { IntelligenceJob, RunPlan, JobStatus, EventEnvelope, AppSettings, ModelType, Blueprint, WorkerMessage } from '../types';
+
+// --- Worker Instantiation ---
+// We use a standard Worker here. SharedWorker is powerful but complex to bundle inline.
+// A standard Worker achieves the "Performance Gap" fix (Off-main-thread).
+// We use a Blob to load the worker code which imports the actual logic.
+// However, since we have 'core/intelligence/worker.ts', we can try to import it.
+// If the environment supports it:
+// const worker = new Worker(new URL('../core/intelligence/worker.ts', import.meta.url), { type: 'module' });
 
 export interface UseIntelligenceReturn {
-    // State
     isGenerating: boolean;
     jobStatus: JobStatus;
     runPlan: RunPlan | null;
     liveEvents: EventEnvelope[];
     activeJobId: string | null;
-    
-    // Actions
     startJob: (blueprint: Blueprint, prompt: string, apiKey: string, modelType: ModelType, settings: AppSettings['safety']) => Promise<void>;
     pauseJob: () => Promise<void>;
     resumeJob: () => Promise<void>;
     retryTask: (taskId: string) => Promise<void>;
     dispatchTask: (role: string, instruction: string, context: Record<string, string>) => Promise<string>;
-    
-    // Derived
-    activeTaskId: string | null; // The task currently selected or running
+    activeTaskId: string | null; 
     setActiveTaskId: (id: string | null) => void;
 }
 
@@ -33,32 +33,36 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
     const [liveEvents, setLiveEvents] = useState<EventEnvelope[]>([]);
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     
-    // Polling ref to prevent closure staleness
+    const workerRef = useRef<Worker | null>(null);
     const jobRef = useRef<string | null>(null);
 
-    // Subscribe to EventBus
+    // Initialize Worker
+    useEffect(() => {
+        if (!workerRef.current) {
+            // Using standard module worker
+            workerRef.current = new Worker(new URL('../core/intelligence/worker.ts', import.meta.url), { type: 'module' });
+            
+            workerRef.current.onmessage = (e) => {
+                const msg = e.data;
+                if (msg.type === 'EVENT') {
+                    const event = msg.payload as EventEnvelope;
+                    if (event.jobId === jobRef.current) {
+                        setLiveEvents(prev => [...prev, event]);
+                    }
+                }
+            };
+        }
+
+        return () => {
+            // We keep the worker alive generally, or terminate if we want to kill the "Brain" on unmount
+            // For a single-page app, keeping it alive is fine.
+        };
+    }, []);
+
+    // Sync State with DB (Polling still useful for persistent state, events for real-time)
     useEffect(() => {
         if (!activeJobId) return;
         jobRef.current = activeJobId;
-
-        const unsub = eventBus.subscribe((event) => {
-            if (event.jobId === activeJobId) {
-                setLiveEvents(prev => [...prev, event]);
-            }
-        });
-
-        // Hydrate history immediately
-        setLiveEvents(eventBus.getHistory(activeJobId));
-
-        return () => {
-            unsub();
-            jobRef.current = null;
-        };
-    }, [activeJobId]);
-
-    // Poll for Job State & Plan Updates
-    useEffect(() => {
-        if (!activeJobId) return;
 
         const poll = async () => {
             if (!jobRef.current) return; 
@@ -66,22 +70,25 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
                 const job = await db.get<IntelligenceJob>('jobs', jobRef.current);
                 if (job) {
                     setJobStatus(job.status);
-                    
                     if (job.runPlanId) {
                         const plan = await db.get<RunPlan>('runplans', job.runPlanId);
                         setRunPlan(plan || null);
                     }
                 }
-            } catch (e) {
-                console.error("Polling error", e);
-            }
+            } catch (e) { console.error(e); }
         };
 
         const interval = setInterval(poll, 1000);
-        poll(); // Initial call
-
-        return () => clearInterval(interval);
+        poll(); 
+        return () => {
+            clearInterval(interval);
+            jobRef.current = null;
+        };
     }, [activeJobId]);
+
+    const postToWorker = (msg: WorkerMessage) => {
+        workerRef.current?.postMessage(msg);
+    };
 
     const startJob = useCallback(async (
         blueprint: Blueprint, 
@@ -94,41 +101,77 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
         setRunPlan(null);
         setActiveTaskId(null);
         
-        try {
-            const jobId = await engine.startJob(
-                blueprint.projectId,
-                blueprint.id,
-                prompt,
-                apiKey,
-                modelType,
-                settings
-            );
-            setActiveJobId(jobId);
-            setJobStatus('RUNNING');
-        } catch (e) {
-            console.error(e);
-            throw e;
-        }
-    }, []);
+        // Optimistically create ID here? Or let worker do it?
+        // Worker does it. But we need the ID to track.
+        // Actually, supervisor.startJob returns the ID. 
+        // We can't await response easily with simple postMessage.
+        // We will generate the ID here for the worker to use, ensuring sync.
+        // Wait, supervisor.startJob generates it.
+        // Let's rely on polling to find the latest job for this blueprint?
+        // Or better: Pass the ID we want to use.
+        // Refactoring: Supervisor.startJob logic in worker can accept an ID? 
+        // No, let's keep it simple: We find the job by project/blueprint in polling or 
+        // we change the protocol to request start and wait for a 'JOB_STARTED' event.
+        
+        // Correct approach: Just trigger start. The first event 'PLAN' 'TASK_STARTED' will contain jobId in envelope.
+        // We listen for that.
+        
+        postToWorker({ 
+            type: 'START_JOB', 
+            payload: { blueprint, prompt, apiKey, modelType, settings } 
+        });
+        
+        // We temporarily set status to RUNNING to show spinner until real data comes
+        setJobStatus('RUNNING');
+        
+        // We need to catch the JobID from the stream.
+        const handler = (e: MessageEvent) => {
+            const msg = e.data;
+            if (msg.type === 'EVENT' && msg.payload.phase === 'PLAN' && !activeJobId) {
+                setActiveJobId(msg.payload.jobId);
+                workerRef.current?.removeEventListener('message', handler);
+            }
+        };
+        workerRef.current?.addEventListener('message', handler);
+
+    }, [activeJobId]);
 
     const pauseJob = useCallback(async () => {
-        if (activeJobId) await supervisor.pauseJob(activeJobId);
+        if (activeJobId) postToWorker({ type: 'PAUSE_JOB', payload: { jobId: activeJobId } });
     }, [activeJobId]);
 
     const resumeJob = useCallback(async () => {
         if (activeJobId) {
-            await supervisor.resumeJob(activeJobId);
+            postToWorker({ type: 'RESUME_JOB', payload: { jobId: activeJobId } });
             setJobStatus('RUNNING');
         }
     }, [activeJobId]);
 
     const retryTask = useCallback(async (taskId: string) => {
-        if (activeJobId) await supervisor.retryTask(activeJobId, taskId);
+        if (activeJobId) postToWorker({ type: 'RETRY_TASK', payload: { jobId: activeJobId, taskId } });
     }, [activeJobId]);
 
     const dispatchTask = useCallback(async (role: string, instruction: string, context: Record<string, string>) => {
         if (!activeJobId) throw new Error("No active job session");
-        return await supervisor.dispatchAgentTask(activeJobId, role, instruction, context);
+        
+        return new Promise<string>((resolve, reject) => {
+            const tempId = role; // Simple correlation
+            
+            const handler = (e: MessageEvent) => {
+                const msg = e.data;
+                if (msg.type === 'DISPATCH_RESULT' && msg.payload.id === tempId) {
+                    if (msg.payload.error) reject(new Error(msg.payload.error));
+                    else resolve(msg.payload.response);
+                    workerRef.current?.removeEventListener('message', handler);
+                }
+            };
+            workerRef.current?.addEventListener('message', handler);
+            
+            postToWorker({ 
+                type: 'DISPATCH_TASK', 
+                payload: { activeJobId, role, instruction, context } 
+            });
+        });
     }, [activeJobId]);
 
     return {

@@ -58,7 +58,7 @@ export const revisionLoop = {
             // Construct Feedback Context
             const feedback = agentCritiques.map(c => `- Issue: ${c.issue}\n  Fix: ${c.recommendation}`).join('\n');
             const prompt = `
-            CRITIC FEEDBACK (REQURIED FIXES):
+            CRITIC FEEDBACK (REQUIRED FIXES):
             ${feedback}
 
             Please regenerate the "${section}" to address these issues. Maintain consistency with the original requirements.
@@ -75,7 +75,7 @@ export const revisionLoop = {
                 // Use a modified seed for revision to avoid cache hit of the original erroneous output
                 const revisionSeed = `${seed}_rev_1`; 
                 const response = await dispatcher.dispatchTask(
-                    { id: `${agentRole}_REV`, role: agentRole, description: `Revise ${section} based on feedback.` },
+                    { id: `${agentRole}_REV`, role: agentRole as string, description: `Revise ${section} based on feedback.` },
                     context,
                     apiKey,
                     modelType,

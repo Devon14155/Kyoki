@@ -2,7 +2,7 @@
 import { ConsensusItem } from '../../types';
 import { getEmbedding } from '../../services/aiService';
 
-// Helper for cosine similarity (Duplicate of vectorStore but needed in this scope)
+// Helper for cosine similarity
 function cosineSimilarity(vecA: number[], vecB: number[]): number {
     let dot = 0, normA = 0, normB = 0;
     for (let i = 0; i < vecA.length; i++) {
@@ -13,9 +13,116 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+// Helper to calculate centroid of multiple vectors
+function calculateCentroid(vectors: number[][]): number[] {
+    if (vectors.length === 0) return [];
+    const dim = vectors[0].length;
+    const centroid = new Array(dim).fill(0);
+    
+    for (const vec of vectors) {
+        for (let i = 0; i < dim; i++) {
+            centroid[i] += vec[i];
+        }
+    }
+    
+    return centroid.map(val => val / vectors.length);
+}
+
 export const mmce = {
-    // Massive Multi-Model Consensus Engine
-    // Upgraded to include Semantic Validation against Requirements
+    // Massive Multi-Model Consensus Engine - True Consensus Implementation
+    
+    async processBatch(
+        taskId: string,
+        candidates: { provider: string; content: string }[],
+        apiKey: string,
+        modelType: any,
+        requirementsSummary?: string
+    ): Promise<ConsensusItem> {
+        
+        // 1. Generate Embeddings for all candidates
+        const embeddingsWithMeta = await Promise.all(
+            candidates.map(async (c) => {
+                try {
+                    // Use first 2000 chars for embedding to save tokens/latency
+                    const vec = await getEmbedding(c.content.slice(0, 2000), apiKey, modelType);
+                    return { ...c, vector: vec };
+                } catch (e) {
+                    return { ...c, vector: null };
+                }
+            })
+        );
+
+        const validCandidates = embeddingsWithMeta.filter(c => c.vector !== null);
+
+        // Fallback if embeddings fail (e.g. offline/no key)
+        if (validCandidates.length === 0) {
+            // Basic heuristic fallback
+            const best = candidates.sort((a,b) => b.content.length - a.content.length)[0];
+            return {
+                taskId,
+                final: best.content,
+                confidence: 0.5,
+                alternatives: candidates.map(c => ({ ...c, score: 0.5 })),
+                evidence: [],
+                provenance: { model: best.provider, timestamp: Date.now(), method: 'SINGLE' }
+            };
+        }
+
+        // 2. Calculate Centroid
+        const vectors = validCandidates.map(c => c.vector!);
+        const centroid = calculateCentroid(vectors);
+
+        // 3. Score by Distance to Centroid (Closer is better = more "consensus")
+        const scoredCandidates = validCandidates.map(c => {
+            const similarity = cosineSimilarity(c.vector!, centroid);
+            // Distance 0 to 1 (1 is far, 0 is same)
+            // Cosine sim is -1 to 1. We normalize to 0-1 range for "distance".
+            // Sim 1.0 -> Dist 0.0
+            const dist = 1 - similarity; 
+            return {
+                ...c,
+                score: similarity, // Higher similarity to centroid = better consensus
+                distance: dist
+            };
+        });
+
+        // 4. Semantic Drift Check (vs Requirements)
+        let semanticDist = 0;
+        if (requirementsSummary) {
+            const reqVec = await getEmbedding(requirementsSummary.slice(0, 2000), apiKey, modelType);
+            if (reqVec) {
+                // Check distance of Centroid to Requirements
+                const reqSim = cosineSimilarity(centroid, reqVec);
+                semanticDist = 1 - reqSim;
+            }
+        }
+
+        // 5. Select Winner
+        // We pick the one closest to the centroid (highest similarity score)
+        scoredCandidates.sort((a, b) => b.score - a.score);
+        const winner = scoredCandidates[0];
+
+        return {
+            taskId,
+            final: winner.content,
+            confidence: winner.score, // Use similarity to centroid as confidence proxy
+            alternatives: scoredCandidates.map(c => ({
+                provider: c.provider,
+                content: c.content,
+                score: c.score,
+                distanceToCentroid: c.distance
+            })),
+            evidence: [],
+            semanticDistance: semanticDist,
+            provenance: {
+                model: winner.provider,
+                timestamp: Date.now(),
+                method: 'CENTROID'
+            }
+        };
+    },
+
+    // Legacy/Single Wrapper
     async process(
         taskId: string, 
         response: string, 
@@ -24,54 +131,12 @@ export const mmce = {
         modelType: any,
         requirementsSummary?: string
     ): Promise<ConsensusItem> {
-        
-        let score = 0.85; 
-        let semanticDist = 0;
-
-        // 1. Basic Heuristics
-        if (response.length < 100) score -= 0.2;
-        if (response.includes("I cannot")) score -= 0.5;
-        if (response.includes("```")) score += 0.05; // Code blocks increase confidence
-
-        // 2. Semantic Drift Check (Enterprise Logic)
-        // We verify if the generated output is semantically aligned with the Requirements.
-        // This prevents "Hallucination drift" where agents go off-topic.
-        if (requirementsSummary && apiKey && modelType === 'gemini') {
-            try {
-                // Get embedding for output (using the first 1000 chars to save latency)
-                const outputVec = await getEmbedding(response.slice(0, 1000), apiKey, modelType);
-                const reqVec = await getEmbedding(requirementsSummary.slice(0, 1000), apiKey, modelType);
-
-                if (outputVec && reqVec) {
-                    const similarity = cosineSimilarity(outputVec, reqVec);
-                    semanticDist = 1 - similarity;
-                    
-                    // If content is very different from requirements (e.g. talking about biology instead of software)
-                    // The similarity will be low.
-                    // Note: Low similarity isn't always bad (e.g. code vs text), but for "Requirements" vs "Architecture", they should align.
-                    if (similarity < 0.6) {
-                        score -= 0.15;
-                    }
-                    if (similarity > 0.8) {
-                        score += 0.1;
-                    }
-                }
-            } catch (e) {
-                console.warn("MMCE Semantic check failed", e);
-            }
-        }
-
-        return {
-            taskId,
-            final: response,
-            confidence: Math.min(Math.max(score, 0), 1),
-            alternatives: [{ provider, content: response, score }],
-            evidence: [],
-            semanticDistance: semanticDist,
-            provenance: {
-                model: provider,
-                timestamp: Date.now()
-            }
-        };
+        return this.processBatch(
+            taskId, 
+            [{ provider, content: response }], 
+            apiKey, 
+            modelType, 
+            requirementsSummary
+        );
     }
 };

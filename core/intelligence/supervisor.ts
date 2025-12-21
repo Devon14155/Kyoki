@@ -32,7 +32,6 @@ export class Supervisor {
             createdAt: Date.now(),
             updatedAt: Date.now(),
             logs: [],
-            // Save config for resumability
             contextConfig: {
                 apiKey,
                 modelType,
@@ -42,7 +41,6 @@ export class Supervisor {
         };
         await db.put('jobs', job);
 
-        // Run async without blocking UI
         this.runPipeline(jobId).catch(err => {
             console.error("Pipeline Crash", err);
             this.emit(jobId, 'PLAN', 'SUPERVISOR_ALERT', { error: err.message }, 'ERROR');
@@ -51,7 +49,7 @@ export class Supervisor {
         return jobId;
     }
 
-    // --- NEW: Ad-Hoc Agent Dispatch for Chat ---
+    // Ad-Hoc Agent Dispatch for Chat
     async dispatchAgentTask(
         jobId: string,
         role: string,
@@ -59,7 +57,7 @@ export class Supervisor {
         contextArtifacts: Record<string, string>
     ): Promise<string> {
         const job = await db.get<IntelligenceJob>('jobs', jobId);
-        if (!job || !job.contextConfig) throw new Error("Active job context required for ad-hoc tasks");
+        if (!job || !job.contextConfig) throw new Error("Active job context required");
 
         const taskId = crypto.randomUUID();
         const task: Task = {
@@ -74,18 +72,16 @@ export class Supervisor {
         };
 
         this.emit(jobId, 'DISPATCH', 'TASK_STARTED', { 
-            message: `Dispatching ${role} for ad-hoc request: "${instruction.slice(0, 50)}..."`,
+            message: `Dispatching ${role} for ad-hoc request...`,
             role 
         });
 
         try {
-            // Build Ad-Hoc Context
             let context = `Current Blueprint State:\n`;
             Object.entries(contextArtifacts).forEach(([k, v]) => {
-                context += `\n--- ${k} ---\n${v.slice(0, 2000)}...`; // Truncate for safety
+                context += `\n--- ${k} ---\n${v.slice(0, 2000)}...`; 
             });
 
-            // Dispatch
             const seed = job.seed || 'adhoc-seed';
             const response = await dispatcher.dispatchTask(
                 task, 
@@ -116,7 +112,7 @@ export class Supervisor {
         if (job && job.status === 'RUNNING') {
             job.status = 'PAUSED';
             await db.put('jobs', job);
-            this.emit(jobId, 'CONTROL', 'PIPELINE_PAUSED', { message: 'Pipeline pausing after current tasks...' });
+            this.emit(jobId, 'CONTROL', 'PIPELINE_PAUSED', { message: 'Pipeline pausing...' });
         }
     }
 
@@ -131,7 +127,6 @@ export class Supervisor {
     }
 
     async retryTask(jobId: string, taskId: string) {
-        // Reset task status to PENDING in RunPlan
         const job = await db.get<IntelligenceJob>('jobs', jobId);
         if (!job || !job.runPlanId) return;
 
@@ -144,7 +139,6 @@ export class Supervisor {
             task.output = undefined;
             await db.put('runplans', plan);
             
-            // If job is COMPLETED or FAILED, restart it. If PAUSED, just ready it.
             if (job.status !== 'RUNNING') {
                 await this.resumeJob(jobId);
             }
@@ -164,7 +158,7 @@ export class Supervisor {
 
         const { apiKey, modelType, settings, prompt } = job.contextConfig;
 
-        // 1. Initialize Plan if needed
+        // 1. Initialize Plan
         let plan: RunPlan;
         if (!job.runPlanId) {
             this.emit(job.id, 'PLAN', 'TASK_STARTED', { message: 'Initializing Intelligence Layer v3.0...' });
@@ -176,13 +170,12 @@ export class Supervisor {
             await db.put('jobs', job);
             this.emit(job.id, 'PLAN', 'TASK_STARTED', { message: `Planner assigned ${plan.tasks.length} agents.` });
         } else {
-            // Load existing plan (Resuming)
             const p = await db.get<RunPlan>('runplans', job.runPlanId);
             if (!p) throw new Error("RunPlan missing");
             plan = p;
         }
 
-        // 2. Hydrate Artifacts from Consensus Store (State Recovery)
+        // 2. Hydrate State
         const artifacts: Record<string, string> = {};
         for (const t of plan.tasks) {
             if (t.status === 'COMPLETED') {
@@ -193,20 +186,19 @@ export class Supervisor {
         
         let baseContext = prompt;
 
-        // 3. Execution Loop (State Machine)
+        // 3. Execution Loop
         while (true) {
             job = await db.get<IntelligenceJob>('jobs', jobId);
             if (!job || job.status === 'PAUSED' || job.status === 'FAILED') {
                 break; 
             }
 
-            // Identify Runnable Tasks
             const completedIds = new Set(plan.tasks.filter(t => t.status === 'COMPLETED').map(t => t.id));
             const inProgressIds = new Set(plan.tasks.filter(t => t.status === 'IN_PROGRESS').map(t => t.id));
 
-            // Check completion
+            // Completion Check
             if (completedIds.size === plan.tasks.length) {
-                // --- REVISION LOOP START ---
+                // Revision Loop
                 if (settings.customSystemPrompt !== 'DISABLE_CRITIC') {
                     this.emit(job.id, 'VERIFY', 'TASK_STARTED', { message: 'Initiating Revision Loop...' });
                     const revisedArtifacts = await revisionLoop.run(
@@ -219,8 +211,7 @@ export class Supervisor {
                     );
                     Object.assign(artifacts, revisedArtifacts);
                 }
-                // --- REVISION LOOP END ---
-
+                
                 await this.finalizeJob(job, plan, artifacts);
                 break;
             }
@@ -243,9 +234,8 @@ export class Supervisor {
                 continue;
             }
 
-            // Launch Tasks
+            // Launch Tasks (Parallel)
             const promises = runnableTasks.map(async (task) => {
-                // A. Mark IN_PROGRESS
                 task.status = 'IN_PROGRESS';
                 task.startTime = Date.now();
                 await this.updateTaskInPlan(plan);
@@ -255,15 +245,13 @@ export class Supervisor {
                         job!, task, plan, artifacts, baseContext, apiKey, modelType, settings, job!.seed!
                     );
                     
-                    // B. Mark COMPLETED
                     task.status = 'COMPLETED';
                     task.endTime = Date.now();
                     task.output = artifacts[task.section]; 
                     
-                    // Metric Tracking
                     if (task.startTime) {
                         task.metrics = {
-                            tokensUsed: Math.ceil((task.output?.length || 0) / 4), // Approx
+                            tokensUsed: Math.ceil((task.output?.length || 0) / 4),
                             latency: task.endTime - task.startTime,
                             model: modelType
                         };
@@ -287,7 +275,6 @@ export class Supervisor {
     }
 
     private async finalizeJob(job: IntelligenceJob, plan: RunPlan, artifacts: Record<string, string>) {
-        // Stitch Content
         let fullContent = "";
         plan.tasks.forEach(t => {
             if (artifacts[t.section]) {
@@ -295,7 +282,6 @@ export class Supervisor {
             }
         });
 
-        // Verify
         const bp = await db.get<any>('blueprints', job.blueprintId);
         if (bp) {
             bp.content = fullContent;
@@ -330,7 +316,6 @@ export class Supervisor {
     ) {
         this.emit(job.id, 'DISPATCH', 'TASK_STARTED', { taskId: task.id, role: task.role, section: task.section });
 
-        // Build Context
         let taskContext = baseContext;
         if (artifacts['Requirements'] && task.section !== 'Requirements') {
              taskContext += `\n\n# Requirements\n${artifacts['Requirements']}`;
@@ -342,79 +327,79 @@ export class Supervisor {
             }
         });
 
-        // 1. Dispatch
-        const response = await dispatcher.dispatchTask(task, taskContext, apiKey, modelType, settings, seed);
-        this.emit(job.id, 'DISPATCH', 'MODEL_RESPONSE', { taskId: task.id, length: response.length });
-
-        // 2. Consensus & Store (With upgraded Semantic Check)
-        // Pass baseContext (User requirements) to MMCE for semantic check
-        const consensus = await mmce.process(task.id, response, modelType, apiKey, modelType, baseContext);
+        // 1. Dispatch & Consensus (True Consensus)
+        // Use batch dispatcher to get candidates
+        const candidates = await dispatcher.dispatchConsensus(task, taskContext, apiKey, modelType, settings, seed);
+        
+        // Use MMCE to find centroid and winner
+        const consensus = await mmce.processBatch(task.id, candidates, apiKey, modelType, baseContext);
+        
         await db.put('consensus', consensus); 
         
+        // Log choice
+        this.emit(job.id, 'CONSENSUS', 'CONSENSUS_READY', { 
+            taskId: task.id, 
+            winner: consensus.provenance.model, 
+            confidence: consensus.confidence.toFixed(2),
+            method: consensus.provenance.method 
+        });
+
         if (consensus.semanticDistance && consensus.semanticDistance > 0.4) {
              this.emit(job.id, 'CONSENSUS', 'SUPERVISOR_ALERT', { message: `Semantic Drift Detected (${consensus.semanticDistance.toFixed(2)}) in ${task.section}.` }, 'WARN');
         }
 
-        // 3. Heuristic Tools Execution
+        // 2. Tools
         const toolResults = this.executeTools(task.role, consensus.final, artifacts);
         toolResults.forEach(res => {
             const level = res.success ? 'INFO' : 'WARN';
             this.emit(job.id, 'TOOL_EXECUTION', 'TOOL_RESULT', res, level);
         });
 
-        // 4. Agentic Tools Execution (LLM Based)
+        // 3. Agentic Tools
         await this.executeAgenticTools(job.id, task.role, consensus.final, artifacts, job.contextConfig);
 
-        // 5. Grounding
+        // 4. Grounding
         const groundReport = await grounding.validate(consensus, apiKey, modelType);
         await db.put('grounding', groundReport);
         if (groundReport.status === 'WARN') {
             this.emit(job.id, 'GROUNDING', 'GROUNDING_ISSUE', { taskId: task.id, issues: groundReport.ungroundedClaims.length });
         }
 
-        // 6. Update Local Artifact Map
+        // 5. Update Artifacts
         artifacts[task.section] = consensus.final;
     }
 
     private executeTools(role: string, content: string, artifacts: Record<string, string>): ToolOutput[] {
         const results: ToolOutput[] = [];
-
         // Universal Tools
         results.push(TOOLS.securityScanner(content));
         if (content.includes('```mermaid')) {
             results.push(TOOLS.mermaidValidator(content));
         }
-
-        // Context-Aware Tools
+        // Context-Aware
         if (role === 'PLATFORM_ENGINEER') {
             results.push(TOOLS.costEstimator(content));
             results.push(TOOLS.dependencyAnalyzer(artifacts));
         }
-
         if (role === 'BACKEND_ARCHITECT') {
             results.push(TOOLS.apiContractLinter(content));
             if (artifacts['Frontend Architecture']) {
                 results.push(TOOLS.contractVerifier(artifacts['Frontend Architecture'], content));
             }
         }
-
         if (role === 'PERFORMANCE_ARCHITECT') {
             results.push(TOOLS.scalabilitySimulator(artifacts));
         }
-
         if (role === 'COMPLIANCE_ENGINEER') {
             results.push(TOOLS.complianceChecker(artifacts));
         }
-
         if (role === 'FRONTEND_ENGINEER') {
              results.push(TOOLS.techStackValidator(artifacts));
              results.push(TOOLS.licenseChecker(artifacts));
         }
-
         if (role === 'ARCHITECTURE_COHERENCE_CHECKER') {
              results.push(TOOLS.architectureCoherenceChecker(artifacts));
         }
-
         return results;
     }
 
@@ -425,7 +410,6 @@ export class Supervisor {
         artifacts: Record<string, string>,
         contextConfig: any
     ) {
-        // Map roles to tool IDs from services/toolPrompts.ts
         const mapping: Record<string, string[]> = {
             'PRODUCT_ARCHITECT': ['requirements-parser', 'complexity-estimator'],
             'FRONTEND_ENGINEER': ['tech-stack-advisor'],
@@ -443,7 +427,6 @@ export class Supervisor {
 
             this.emit(jobId, 'TOOL_EXECUTION', 'TASK_STARTED', { message: `Running Agentic Tool: ${toolDef.name}` });
 
-            // Construct Prompt
             const prompt = `
             ${toolDef.systemPrompt}
 
@@ -455,7 +438,6 @@ export class Supervisor {
             `;
 
             try {
-                 // Use dispatcher to run the tool with override system prompt
                  const toolOutput = await dispatcher.dispatchTask(
                      { id: `${role}_TOOL_${toolId}`, role: 'TOOL_AGENT', description: `Run ${toolDef.name}` },
                      prompt,
@@ -463,7 +445,7 @@ export class Supervisor {
                      contextConfig.modelType,
                      contextConfig.settings,
                      `${jobId}_${toolId}`,
-                     toolDef.systemPrompt // Override System Prompt
+                     toolDef.systemPrompt 
                  );
 
                  this.emit(jobId, 'TOOL_EXECUTION', 'TOOL_RESULT', { 

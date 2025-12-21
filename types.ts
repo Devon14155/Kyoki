@@ -51,7 +51,7 @@ export interface Blueprint {
   tags: string[];
   content: string; 
   status: 'draft' | 'generating' | 'completed' | 'archived';
-  type?: 'standard' | 'general_chat'; // NEW: Distinguish chat threads from full blueprints
+  type?: 'standard' | 'general_chat'; 
   modelUsed: ModelType;
   folderId?: string;
   versions: BlueprintVersion[];
@@ -153,12 +153,13 @@ export interface ConsensusItem {
     taskId: string;
     final: string; // The selected text
     confidence: number; // 0-1
-    alternatives: { provider: string; content: string; score: number }[];
+    alternatives: { provider: string; content: string; score: number; distanceToCentroid?: number }[];
     evidence: { chunkId: string; similarity: number }[];
     semanticDistance?: number; // Distance from requirements center
     provenance: {
         model: string;
         timestamp: number;
+        method: 'SINGLE' | 'MULTI_VOTE' | 'CENTROID';
     };
 }
 
@@ -228,6 +229,16 @@ export interface IntelligenceJob {
         prompt: string;
     }
 }
+
+// --- Worker Types ---
+export type WorkerMessage = 
+    | { type: 'START_JOB'; payload: { blueprint: Blueprint; prompt: string; apiKey: string; modelType: ModelType; settings: AppSettings['safety'] } }
+    | { type: 'PAUSE_JOB'; payload: { jobId: string } }
+    | { type: 'RESUME_JOB'; payload: { jobId: string } }
+    | { type: 'RETRY_TASK'; payload: { jobId: string; taskId: string } }
+    | { type: 'DISPATCH_TASK'; payload: { role: string; instruction: string; context: Record<string, string>; activeJobId: string } }
+    | { type: 'EVENT'; payload: EventEnvelope }
+    | { type: 'DISPATCH_RESULT'; payload: { id: string; response: string; error?: string } };
 
 // --- NEW CHAT TYPES ---
 
