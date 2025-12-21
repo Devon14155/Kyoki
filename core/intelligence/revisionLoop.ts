@@ -3,6 +3,7 @@ import { dispatcher } from './dispatcher';
 import { TOOLS } from './tools';
 import { generateJSON } from '../../services/aiService';
 import { AppSettings, ModelType } from '../../types';
+import { SYSTEM_PROMPTS } from './systemPrompts';
 
 interface Critique {
     severity: 'critical' | 'warning' | 'suggestion';
@@ -82,7 +83,7 @@ export const revisionLoop = {
                 );
                 
                 // Explicit cast to avoid type inference issues
-                const responseStr = String(response);
+                const responseStr = response as string;
                 updatedArtifacts[section] = responseStr;
                 eventBus.emit(eventBus.createEnvelope(jobId, 'DISPATCH', 'MODEL_RESPONSE', { role: agentRole, length: responseStr.length }));
             } catch (e: any) {
@@ -147,7 +148,8 @@ export const revisionLoop = {
         `;
 
         try {
-            const response = await generateJSON(prompt, apiKey, modelType, settings, "You are a harsh Technical Reviewer.");
+            // Use the centralized system prompt for the Critic
+            const response = await generateJSON(prompt, apiKey, modelType, settings, SYSTEM_PROMPTS.CRITIC);
             if (response && Array.isArray(response.critiques)) {
                 critiques.push(...response.critiques);
             }

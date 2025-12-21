@@ -6,6 +6,7 @@ import { COMPLIANCE_ENGINEER } from './agents/complianceEngineer';
 import { ACCESSIBILITY_ENGINEER } from './agents/accessibilityEngineer';
 import { SRE_AGENT } from './agents/sre';
 import { STRATEGY_AGENT } from './agents/strategy';
+import { CRITIC_AGENT } from './agents/critic';
 
 export const SYSTEM_PROMPTS = {
     PRODUCT_ARCHITECT: `You are an elite Product Architect at a FAANG company.
@@ -116,10 +117,5 @@ export const SYSTEM_PROMPTS = {
     - Missing Dependencies
     - Logical Gaps`,
 
-    CRITIC: `You are a Senior Principal Engineer acting as a Technical Reviewer.
-    Your goal is to find flaws, inconsistencies, and missing requirements across the entire blueprint.
-    You are harsh but constructive.
-    
-    INPUT: A collection of architectural artifacts.
-    OUTPUT: A structured JSON critique identifying specific issues and which Agent/Section is responsible.`
+    CRITIC: CRITIC_AGENT.systemPrompt
 };
