@@ -1,19 +1,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Blueprint, ChatMessage, ContextItem, ModelType, BlueprintVersion, AppSettings, EventEnvelope, RunPlan, JobStatus } from '../types';
+import { Blueprint, ChatMessage, ModelType, AppSettings } from '../types';
 import { storageService } from '../services/storage';
-import { engine } from '../core/engine';
-import { supervisor } from '../core/intelligence/supervisor'; // Direct access for controls
-import { db } from '../services/db';
-import { eventBus } from '../core/intelligence/eventBus';
 import { explainSectionStream, regenerateSectionStream } from '../services/aiService';
-import { Button, MarkdownView, Badge, DiffViewer } from '../components/UI';
+import { Button, MarkdownView, Badge } from '../components/UI';
 import { PipelineVisualizer } from '../components/PipelineVisualizer';
-import { KYOKI_TOOLS } from '../services/toolPrompts';
+import { LogStream } from '../components/LogStream';
+import { useIntelligence } from '../hooks/useIntelligence';
 import { 
-    Send, Cpu, Save, PanelRightClose, PanelRightOpen, 
-    RefreshCw, Download, Printer, Layers, History, Wrench, ShieldAlert, CheckCircle2, AlertTriangle, Terminal, List, X
+    Send, Cpu, Save, RefreshCw, Download, Printer, Layers, List, X, ShieldAlert, CheckCircle2 
 } from 'lucide-react';
 
 export const Editor = () => {
@@ -22,31 +18,30 @@ export const Editor = () => {
   const initialPrompt = searchParams.get('prompt');
   const pid = searchParams.get('pid');
 
+  // UI State
   const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState(initialPrompt || '');
-  const [isGenerating, setIsGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  
-  // Pipeline State
-  const [runPlan, setRunPlan] = useState<RunPlan | null>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus>('CREATED');
-
   const [showToc, setShowToc] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(true);
   const [headers, setHeaders] = useState<{ id: string, title: string, level: number }[]>([]);
   
-  const [liveEvents, setLiveEvents] = useState<EventEnvelope[]>([]);
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const logsEndRef = useRef<HTMLDivElement>(null);
-  
+  // Settings State
   const [apiKey, setApiKey] = useState<string>('');
   const [modelType, setModelType] = useState<ModelType>(storageService.getSettings().activeModel);
   const [availableKeys, setAvailableKeys] = useState<Record<string, string>>({});
   const [safetySettings, setSafetySettings] = useState<AppSettings['safety']>(storageService.getSettings().safety);
 
+  // Intelligence Hook
+  const { 
+      isGenerating, jobStatus, runPlan, liveEvents, activeJobId, 
+      startJob, pauseJob, resumeJob, retryTask, activeTaskId, setActiveTaskId
+  } = useIntelligence(blueprint?.id);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // --- Initialization ---
   useEffect(() => {
     const init = async () => {
         const settings = storageService.getSettings();
@@ -59,12 +54,9 @@ export const Editor = () => {
 
         if (id && id !== 'new') {
             const saved = await storageService.getBlueprint(id);
-            if (saved) {
-                setBlueprint(saved);
-                // Try to find active or recent job for this blueprint to restore state
-                // This is a simplified lookup, ideally we store jobId in blueprint or route
-            }
+            if (saved) setBlueprint(saved);
         } else if (pid) {
+            // New Draft
             setBlueprint({
                 id: crypto.randomUUID(),
                 projectId: pid,
@@ -78,7 +70,10 @@ export const Editor = () => {
                 modelUsed: settings.activeModel,
                 versions: []
             });
+            // Auto-trigger if prompt exists and keys are ready
             if (initialPrompt && (keys[settings.activeModel] || settings.activeModel === 'gemini')) {
+                // We need blueprint state to be set before triggering. 
+                // Using a timeout is a hack; in a real app, use a refined effect or route state.
                 setTimeout(() => handleGenerate(initialPrompt), 500);
             }
         }
@@ -87,56 +82,54 @@ export const Editor = () => {
     init();
   }, [id, pid]); 
 
+  // Auto-scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Sync blueprint on completion events
   useEffect(() => {
-      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [liveEvents]);
+     if (activeJobId && blueprint) {
+         const lastEvent = liveEvents[liveEvents.length - 1];
+         if (lastEvent && (lastEvent.phase === 'FINALIZE' || lastEvent.eventType === 'CONSENSUS_READY')) {
+             storageService.getBlueprint(blueprint.id).then(bp => {
+                 if (bp) setBlueprint(bp);
+             });
+         }
+     }
+  }, [liveEvents, activeJobId, blueprint]);
 
-  // Poll for Plan updates if job is running
-  useEffect(() => {
-      if (!activeJobId) return;
+  const handleGenerate = async (promptText: string) => {
+      if (!promptText.trim() || isGenerating || !blueprint) return;
+      
+      if (!apiKey && modelType !== 'gemini') {
+          setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: `⚠️ No API Key found for ${modelType}. Please configure in Settings.`,
+              timestamp: Date.now()
+          }]);
+          return;
+      }
 
-      const interval = setInterval(async () => {
-          const job = await db.get<any>('jobs', activeJobId);
-          if (job) {
-              setJobStatus(job.status);
-              if (job.runPlanId) {
-                  const plan = await db.get<RunPlan>('runplans', job.runPlanId);
-                  setRunPlan(plan || null);
-              }
-              if (job.status === 'COMPLETED' || job.status === 'FAILED') {
-                  setIsGenerating(false);
-              }
-          }
-      }, 1000);
+      setInput('');
+      setMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: promptText,
+          timestamp: Date.now()
+      }]);
 
-      return () => clearInterval(interval);
-  }, [activeJobId]);
-
-  useEffect(() => {
-      if (!activeJobId) return;
-
-      const unsub = eventBus.subscribe((event) => {
-          if (event.jobId === activeJobId) {
-              setLiveEvents(prev => [...prev, event]);
-              
-              if (event.phase === 'FINALIZE' || event.eventType === 'CONSENSUS_READY') {
-                 storageService.getBlueprint(blueprint!.id).then(bp => {
-                     if (bp) setBlueprint(bp);
-                 });
-              }
-          }
-      });
-      return () => unsub();
-  }, [activeJobId, blueprint]);
-
-  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const newModel = e.target.value as ModelType;
-      setModelType(newModel);
-      setApiKey(availableKeys[newModel] || '');
+      try {
+          await startJob(blueprint, promptText, apiKey, modelType, safetySettings);
+      } catch (e: any) {
+           setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: `Error starting job: ${e.message}`,
+              timestamp: Date.now()
+          }]);
+      }
   };
 
   const handleSave = async (snapshot = true) => {
@@ -144,75 +137,6 @@ export const Editor = () => {
           await storageService.saveBlueprint(blueprint, snapshot);
           const saved = await storageService.getBlueprint(blueprint.id);
           if (saved) setBlueprint(saved);
-      }
-  };
-
-  const handleGenerate = async (promptText: string) => {
-    if (!promptText.trim() || isGenerating || !blueprint) return;
-    
-    if (!apiKey && modelType !== 'gemini') {
-        setMessages(prev => [...prev, {
-            id: crypto.randomUUID(),
-            role: 'system',
-            content: `⚠️ No API Key found for ${modelType}. Please configure in Settings.`,
-            timestamp: Date.now()
-        }]);
-        return;
-    }
-
-    setIsGenerating(true);
-    setInput('');
-    setLiveEvents([]);
-    setRunPlan(null); // Reset visualization
-    
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: promptText,
-      timestamp: Date.now()
-    }]);
-
-    try {
-        const jobId = await engine.startJob(
-            blueprint.projectId,
-            blueprint.id,
-            promptText,
-            apiKey, 
-            modelType,
-            safetySettings
-        );
-        setActiveJobId(jobId);
-        setJobStatus('RUNNING');
-    } catch (e) {
-        setIsGenerating(false);
-        setMessages(prev => [...prev, {
-            id: crypto.randomUUID(),
-            role: 'system',
-            content: `Error: ${e instanceof Error ? e.message : 'Unknown error'}`,
-            timestamp: Date.now()
-        }]);
-    }
-  };
-
-  // Pipeline Controls
-  const handlePause = async () => {
-      if (activeJobId) {
-          await supervisor.pauseJob(activeJobId);
-      }
-  };
-
-  const handleResume = async () => {
-      if (activeJobId) {
-          await supervisor.resumeJob(activeJobId);
-          setJobStatus('RUNNING');
-          setIsGenerating(true);
-      }
-  };
-
-  const handleRetryTask = async (taskId: string) => {
-      if (activeJobId) {
-          await supervisor.retryTask(activeJobId, taskId);
-          // UI update will happen via polling
       }
   };
 
@@ -224,21 +148,11 @@ export const Editor = () => {
     a.href = url;
     a.download = `${blueprint.title.replace(/\s+/g, '_').toLowerCase()}.md`;
     a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handlePrint = () => window.print();
-
-  const scrollToSection = (id: string) => { 
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-      setShowToc(false);
   };
 
   const handleSectionAction = async (title: string, content: string, action: 'explain'|'regenerate') => {
-      if (!apiKey && modelType !== 'gemini') {
-          alert("Please configure API key in settings first.");
-          return;
-      }
+      if (!apiKey && modelType !== 'gemini') return;
+
       setShowMobileChat(true);
       const msgId = crypto.randomUUID();
       setMessages(prev => [...prev, {
@@ -261,38 +175,40 @@ export const Editor = () => {
               await regenerateSectionStream(title, content, blueprint?.content || '', apiKey, modelType, safetySettings, updateMsg);
           }
       } catch (e) {
-          updateMsg(`\n\nError: ${e instanceof Error ? e.message : 'Failed to process request.'}`);
+          updateMsg(`\n\nError: ${e instanceof Error ? e.message : 'Failed.'}`);
       }
   };
 
-  if (loading) return <div className="h-full flex items-center justify-center text-slate-500">Loading Intelligence Layer...</div>;
+  if (loading) return <div className="h-full flex items-center justify-center text-slate-500">Loading Workspace...</div>;
   if (!blueprint) return <div className="h-full flex items-center justify-center text-slate-500">Blueprint not found.</div>;
 
   return (
     <div className="h-full flex flex-col md:flex-row overflow-hidden relative">
-      {/* Mobile Tab Switcher */}
-      <div className="md:hidden flex h-12 border-b border-slate-200 dark:border-slate-800 bg-surface print:hidden">
-          <button onClick={() => setShowMobileChat(true)} className={`flex-1 font-medium text-sm ${showMobileChat ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-500' : 'text-slate-500'}`}>Chat & Intel</button>
-          <button onClick={() => setShowMobileChat(false)} className={`flex-1 font-medium text-sm ${!showMobileChat ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-500' : 'text-slate-500'}`}>Blueprint</button>
+      {/* Mobile Tabs */}
+      <div className="md:hidden flex h-12 border-b border-slate-200 dark:border-slate-800 bg-surface shrink-0">
+          <button onClick={() => setShowMobileChat(true)} className={`flex-1 font-medium text-sm ${showMobileChat ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600' : 'text-slate-500'}`}>Chat & Intel</button>
+          <button onClick={() => setShowMobileChat(false)} className={`flex-1 font-medium text-sm ${!showMobileChat ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600' : 'text-slate-500'}`}>Blueprint</button>
       </div>
 
-      {/* --- Chat Panel (Left) --- */}
-      <div className={`flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex transition-all duration-300 print:hidden relative ${showMobileChat ? 'flex w-full md:w-[450px]' : 'hidden md:flex md:w-[450px]'}`}>
+      {/* --- Left Panel: Chat & Intelligence --- */}
+      <div className={`flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex transition-all duration-300 relative ${showMobileChat ? 'flex w-full md:w-[450px]' : 'hidden md:flex md:w-[450px]'}`}>
         
-        {/* Header */}
+        {/* Controls */}
         <div className="h-14 border-b border-slate-200 dark:border-slate-800 flex items-center px-4 justify-between bg-white dark:bg-slate-950 shrink-0">
            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
              <Cpu className="w-4 h-4 text-blue-600 dark:text-blue-500" />
              <select 
                 value={modelType} 
-                onChange={handleModelChange}
+                onChange={(e) => {
+                    const m = e.target.value as ModelType;
+                    setModelType(m);
+                    setApiKey(availableKeys[m] || '');
+                }}
                 className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer"
              >
-                 <option value="gemini">Gemini 3.0 Flash (Thinking)</option>
+                 <option value="gemini">Gemini 3.0 Flash</option>
                  <option value="openai">GPT-4</option>
                  <option value="claude">Claude 3</option>
-                 <option value="kimi">Kimi</option>
-                 <option value="glm">GLM-4</option>
              </select>
            </div>
            <Badge color={jobStatus === 'RUNNING' ? 'green' : jobStatus === 'PAUSED' ? 'yellow' : 'slate'}>
@@ -300,57 +216,28 @@ export const Editor = () => {
            </Badge>
         </div>
 
-        {/* Messages / Logs Area */}
+        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           
-          {/* Pipeline Visualizer */}
           {runPlan && (
               <PipelineVisualizer 
                   tasks={runPlan.tasks} 
                   jobStatus={jobStatus}
-                  onPause={handlePause}
-                  onResume={handleResume}
-                  onRetry={handleRetryTask}
+                  onPause={pauseJob}
+                  onResume={resumeJob}
+                  onRetry={retryTask}
+                  activeTaskId={activeTaskId}
+                  onTaskSelect={setActiveTaskId}
               />
           )}
           
-          {/* Active Intelligence Job Visualization */}
           {liveEvents.length > 0 && (
-              <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-blue-500/30 p-4 space-y-3 shadow-sm">
-                  <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                          <RefreshCw className={`w-3 h-3 ${isGenerating ? 'animate-spin' : ''}`}/> Intelligence Log
-                      </h3>
-                      <span className="text-[10px] text-slate-500">Trace: {liveEvents[0]?.traceId.slice(0,6)}</span>
-                  </div>
-                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                      {liveEvents.map((ev, i) => (
-                          <div key={i} className="flex gap-2 text-xs animate-in slide-in-from-left-2 duration-300">
-                              <span className="text-slate-500 dark:text-slate-600 font-mono shrink-0 w-12">
-                                  {ev.timestamp.split('T')[1].slice(0,8)}
-                              </span>
-                              <div className="flex-1">
-                                  <span className={`font-semibold mr-2 ${
-                                      ev.phase === 'PLAN' ? 'text-purple-600 dark:text-purple-400' :
-                                      ev.phase === 'DISPATCH' ? 'text-blue-600 dark:text-blue-400' :
-                                      ev.phase === 'CONSENSUS' ? 'text-emerald-600 dark:text-emerald-400' :
-                                      ev.phase === 'TOOL_EXECUTION' ? 'text-amber-600 dark:text-amber-500' :
-                                      ev.phase === 'GROUNDING' ? 'text-indigo-600 dark:text-indigo-400' : 
-                                      ev.level === 'ERROR' ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'
-                                  }`}>
-                                      [{ev.phase}]
-                                  </span>
-                                  <span className="text-slate-700 dark:text-slate-300">
-                                      {ev.eventType === 'MODEL_RESPONSE' ? `Generated ${ev.payload.length} chars` :
-                                       ev.eventType === 'TASK_STARTED' ? ev.payload.message || ev.payload.role :
-                                       ev.payload.message || JSON.stringify(ev.payload)}
-                                  </span>
-                              </div>
-                          </div>
-                      ))}
-                      <div ref={logsEndRef} />
-                  </div>
-              </div>
+              <LogStream 
+                events={liveEvents} 
+                isGenerating={isGenerating}
+                filterTaskId={activeTaskId}
+                onClearFilter={() => setActiveTaskId(null)}
+              />
           )}
 
           {messages.map(msg => (
@@ -364,13 +251,14 @@ export const Editor = () => {
               </div>
             </div>
           ))}
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
+        {/* Chat Input */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
             <div className="relative">
                 <textarea
-                    className="w-full bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-200 text-sm rounded-xl pl-4 pr-12 py-3 border border-slate-200 dark:border-slate-800 focus:ring-1 focus:ring-blue-500 focus:outline-none placeholder-slate-400 dark:placeholder-slate-500 resize-none"
+                    className="w-full bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-200 text-sm rounded-xl pl-4 pr-12 py-3 border border-slate-200 dark:border-slate-800 focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none"
                     rows={2}
                     placeholder="Describe architecture or ask for changes..."
                     value={input}
@@ -391,27 +279,30 @@ export const Editor = () => {
         </div>
       </div>
 
-      {/* --- Blueprint Preview (Right/Main) --- */}
+      {/* --- Right Panel: Document View --- */}
        <div className={`flex-1 flex flex-col h-full bg-background relative z-0 ${!showMobileChat ? 'flex' : 'hidden md:flex'}`}>
          
-         <div className="h-14 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 bg-white/80 dark:bg-slate-950/80 backdrop-blur shrink-0 print:hidden sticky top-0 z-10">
+         {/* Toolbar */}
+         <div className="h-14 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 bg-white/80 dark:bg-slate-950/80 backdrop-blur shrink-0 sticky top-0 z-10">
              <div className="flex items-center gap-4">
                 <h1 className="font-semibold text-slate-900 dark:text-slate-200 truncate max-w-[150px] md:max-w-md">{blueprint.title}</h1>
-                <Badge color={blueprint.status === 'completed' ? 'green' : 'yellow'}>{blueprint.status}</Badge>
-                {blueprint.verification_report?.overall === 'FAIL' && <Badge color="red"><ShieldAlert className="w-3 h-3 mr-1"/> Verification Failed</Badge>}
-                {blueprint.verification_report?.overall === 'PASS' && <Badge color="green"><CheckCircle2 className="w-3 h-3 mr-1"/> Verified</Badge>}
+                <div className="flex gap-2">
+                     <Badge color={blueprint.status === 'completed' ? 'green' : 'yellow'}>{blueprint.status}</Badge>
+                     {blueprint.verification_report?.overall === 'FAIL' && <Badge color="red"><ShieldAlert className="w-3 h-3 mr-1"/> Issues Found</Badge>}
+                     {blueprint.verification_report?.overall === 'PASS' && <Badge color="green"><CheckCircle2 className="w-3 h-3 mr-1"/> Verified</Badge>}
+                </div>
              </div>
              <div className="flex items-center gap-2">
                  <div className="relative">
                      <button 
                         onClick={() => setShowToc(!showToc)} 
-                        className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                        className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                         title="Table of Contents"
                      >
                         <List className="w-5 h-5" />
                      </button>
                      {showToc && (
-                         <div className="absolute top-full right-0 mt-2 w-64 max-h-[70vh] overflow-y-auto bg-surface border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl p-2 z-50">
+                         <div className="absolute top-full right-0 mt-2 w-64 max-h-[70vh] overflow-y-auto bg-surface border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl p-2 z-50 animate-in fade-in slide-in-from-top-2">
                              <div className="flex justify-between items-center px-2 pb-2 border-b border-slate-100 dark:border-slate-800 mb-2">
                                  <span className="text-xs font-semibold text-slate-500 uppercase">Contents</span>
                                  <button onClick={() => setShowToc(false)}><X className="w-3 h-3 text-slate-400"/></button>
@@ -419,7 +310,7 @@ export const Editor = () => {
                              {headers.length === 0 ? <p className="text-xs text-slate-400 px-2">No headers found.</p> : headers.map((h, i) => (
                                  <button
                                     key={i}
-                                    onClick={() => scrollToSection(h.id)}
+                                    onClick={() => { document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' }); setShowToc(false); }}
                                     className={`block w-full text-left px-2 py-1.5 text-xs rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 truncate ${h.level === 1 ? 'font-medium' : 'pl-4'}`}
                                  >
                                      {h.title}
@@ -429,32 +320,32 @@ export const Editor = () => {
                      )}
                  </div>
 
-                 <button onClick={downloadMarkdown} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Download Markdown">
+                 <button onClick={downloadMarkdown} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Download Markdown">
                     <Download className="w-5 h-5" />
                  </button>
-                 <button onClick={handlePrint} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors" title="Print / PDF">
+                 <button onClick={() => window.print()} className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" title="Print / PDF">
                     <Printer className="w-5 h-5" />
                  </button>
                  <Button variant="primary" size="sm" onClick={() => handleSave(true)}><Save className="w-4 h-4 mr-2" /> Save</Button>
              </div>
          </div>
 
-         <div className="flex-1 flex overflow-hidden relative">
-             <div className="flex-1 overflow-y-auto p-4 lg:p-12">
-                 <div className="max-w-4xl mx-auto min-h-full bg-surface shadow-sm dark:shadow-2xl p-8 rounded-xl print:bg-white print:p-0 border border-slate-200 dark:border-slate-800">
-                     {blueprint.content ? (
-                         <MarkdownView 
-                            content={blueprint.content} 
-                            onHeadersParsed={setHeaders}
-                            onSectionAction={handleSectionAction}
-                         />
-                     ) : (
-                         <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400 dark:text-slate-600 space-y-4">
-                             <Layers className="w-10 h-10 opacity-30" />
-                             <p>Generated blueprint will appear here.</p>
-                         </div>
-                     )}
-                 </div>
+         {/* Document Body */}
+         <div className="flex-1 overflow-y-auto p-4 lg:p-12">
+             <div className="max-w-4xl mx-auto min-h-full bg-surface shadow-sm dark:shadow-2xl p-8 rounded-xl border border-slate-200 dark:border-slate-800">
+                 {blueprint.content ? (
+                     <MarkdownView 
+                        content={blueprint.content} 
+                        onHeadersParsed={setHeaders}
+                        onSectionAction={handleSectionAction}
+                     />
+                 ) : (
+                     <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400 dark:text-slate-600 space-y-4">
+                         <Layers className="w-16 h-16 opacity-20" />
+                         <p className="text-lg font-medium">Ready to Architect</p>
+                         <p className="text-sm max-w-xs text-center">Describe your system on the left to start the multi-agent generation pipeline.</p>
+                     </div>
+                 )}
              </div>
          </div>
        </div>
