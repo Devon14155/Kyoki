@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { chatService } from '../services/chatService';
+import { extractContext } from '../utils/contextExtraction';
 import { Conversation, Message, Blueprint, Artifact, AppSettings, ModelType } from '../types';
 
 export const useChat = (blueprintId: string | undefined) => {
@@ -21,13 +22,11 @@ export const useChat = (blueprintId: string | undefined) => {
         const load = async () => {
             setLoading(true);
             try {
-                // Try to find existing conversation for this blueprint (or GENERAL tag)
                 const existing = await db.getConversationByBlueprint(blueprintId);
                 
                 if (existing) {
                     setConversation(existing);
                 } else {
-                    // Create new
                     const newConv: Conversation = {
                         id: isGeneralMode ? 'general-chat-v1' : crypto.randomUUID(),
                         blueprintId,
@@ -47,7 +46,6 @@ export const useChat = (blueprintId: string | undefined) => {
                         },
                         context: {}
                     };
-                    // Ensure we don't overwrite if race condition, though 'existing' check handles mostly
                     await db.put('conversations', newConv);
                     setConversation(newConv);
                 }
@@ -74,8 +72,19 @@ export const useChat = (blueprintId: string | undefined) => {
 
     const addMessage = async (msg: Message) => {
         if (!conversation) return;
+        
+        // Context Extraction Step
+        let updatedContext = conversation.context;
+        if (msg.role === 'user') {
+            updatedContext = extractContext(msg.content, conversation.context);
+        }
+
         const updatedMsgs = [...conversation.messages, msg];
-        await saveConversation({ ...conversation, messages: updatedMsgs });
+        await saveConversation({ 
+            ...conversation, 
+            messages: updatedMsgs,
+            context: updatedContext 
+        });
     };
 
     const updateLastMessage = async (content: string, isThinking?: boolean) => {
@@ -138,7 +147,7 @@ export const useChat = (blueprintId: string | undefined) => {
                 let fullResponse = "";
                 await chatService.streamChatResponse(
                     [...conversation.messages, { role: 'user', content: text }],
-                    null, // No blueprint context
+                    null,
                     apiKey,
                     modelType,
                     settings,
@@ -152,33 +161,7 @@ export const useChat = (blueprintId: string | undefined) => {
                         });
                     }
                 );
-                // Final Save
-                const msgs = [...conversation.messages];
-                msgs.push({
-                     id: crypto.randomUUID(), // New ID for final state
-                     role: 'assistant',
-                     content: fullResponse,
-                     timestamp: Date.now()
-                }); 
-                // Note: The previous logic relied on setConversation mutating via stream
-                // We just need to ensure DB is synced with final text
-                if (conversation) {
-                    const finalMsgs = [...conversation.messages, { 
-                        id: crypto.randomUUID(), 
-                        role: 'assistant' as const, 
-                        content: fullResponse, 
-                        timestamp: Date.now() 
-                    }];
-                    // To avoid duplicating what react state already shows (since we mutated previous messages in stream callback),
-                    // we actually just need to update the LAST message in the DB.
-                    const currentMsgs = [...conversation.messages]; // The React State is authoritative here due to closure
-                    // However, closure in `sendMessage` sees old `conversation`.
-                    // We rely on `updateLastMessage` helper usually, but here we did custom stream.
-                    
-                    // Simple fix: Reload recent state or just update last message
-                    // Let's use updateLastMessage which handles fetching correct index
-                    await updateLastMessage(fullResponse);
-                }
+                await updateLastMessage(fullResponse);
             } catch (e: any) {
                 await updateLastMessage(`❌ Error: ${e.message}`, false);
             } finally {
@@ -188,7 +171,6 @@ export const useChat = (blueprintId: string | undefined) => {
         }
 
         // CASE B: Editor Mode - Blueprint Generation Trigger
-        // Blueprint is empty or very short -> Treat as "Generate New"
         if (!blueprint || !blueprint.content || blueprint.content.length < 50) {
             await addMessage({
                 id: crypto.randomUUID(),

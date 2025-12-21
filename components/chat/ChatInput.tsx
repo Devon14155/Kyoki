@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowUp, Paperclip, Sparkles, CornerDownLeft, Globe, Mic, X, Bot, Cpu, Zap, ChevronDown, Check } from 'lucide-react';
 import { AgentConfig, ModelType } from '../../types';
+import { useVoiceInput } from '../../hooks/useVoiceInput';
 
 interface ChatInputProps {
     onSend: (text: string, files?: File[]) => void;
@@ -18,9 +19,29 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
     const [showModelMenu, setShowModelMenu] = useState(false);
     const [showToolsMenu, setShowToolsMenu] = useState(false);
     
+    const { isListening, transcript, startListening, stopListening, resetTranscript, isSupported } = useVoiceInput();
+
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const menusRef = useRef<HTMLDivElement>(null);
+
+    // Sync Voice Transcript to Input
+    useEffect(() => {
+        if (transcript) {
+            setInput(prev => {
+                // If the previous input ends with space or is empty, just append. Otherwise add space.
+                const prefix = prev.trim() ? prev + ' ' : '';
+                // Note: transcript accumulates, so we need a strategy. 
+                // Simple strategy: Replace input if empty, or append if not.
+                // Better strategy for this hook: transcript is the *current session* transcript.
+                // We'll just set input to transcript if it was empty, or append? 
+                // Let's assume the user speaks, we append. 
+                // Actually, simple appending might duplicate if hook updates frequently.
+                // Let's just set input to transcript for now to keep it simple, or manage a 'lastTranscript' ref.
+                return transcript; 
+            });
+        }
+    }, [transcript]);
 
     // Auto-resize
     useEffect(() => {
@@ -48,6 +69,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
         onSend(input, files);
         setInput('');
         setFiles([]);
+        resetTranscript();
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
     };
 
@@ -232,6 +254,20 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {isSupported && (
+                            <button
+                                onClick={isListening ? stopListening : startListening}
+                                className={`p-2 rounded-xl flex items-center justify-center transition-all ${
+                                    isListening 
+                                    ? 'bg-red-500/20 text-red-500 animate-pulse' 
+                                    : 'text-gray-400 hover:bg-[#2A2A2A]'
+                                }`}
+                                title={isListening ? "Stop Recording" : "Start Voice Input"}
+                            >
+                                <Mic className="w-5 h-5" />
+                            </button>
+                        )}
+
                         <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 font-medium">
                             <span>Return</span>
                             <div className="bg-[#2A2A2A] border border-[#333] rounded px-1.5 py-0.5">

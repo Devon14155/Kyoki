@@ -82,7 +82,7 @@ export const revisionLoop = {
                     modelType,
                     settings,
                     revisionSeed
-                );
+                ) as string;
                 
                 updatedArtifacts[section] = response;
                 eventBus.emit(eventBus.createEnvelope(jobId, 'DISPATCH', 'MODEL_RESPONSE', { role: agentRole, length: response.length }));

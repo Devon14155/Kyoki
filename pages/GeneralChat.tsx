@@ -1,19 +1,23 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useChat } from '../hooks/useChat';
 import { useIntelligence } from '../hooks/useIntelligence';
 import { ChatContainer } from '../components/chat/ChatContainer';
 import { storageService } from '../services/storage';
-import { AppSettings, Blueprint, Project } from '../types';
-import { Trash2, MessageSquare, Plus, FolderOpen } from 'lucide-react';
+import { AppSettings, Blueprint } from '../types';
+import { Trash2, Plus, MessageSquare, History, X, Download } from 'lucide-react';
 
 export const GeneralChat = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const threadId = searchParams.get('thread');
     
-    // State for the "Shadow" Blueprint backing this chat
+    // UI State
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [showSettings, setShowSettings] = useState(false); // Can be expanded for settings modal
+
+    // Data State
     const [activeBlueprint, setActiveBlueprint] = useState<Blueprint | null>(null);
     const [history, setHistory] = useState<Blueprint[]>([]);
     const [availableKeys, setAvailableKeys] = useState<Record<string, string>>({});
@@ -29,29 +33,22 @@ export const GeneralChat = () => {
         conversation, sendMessage, isTyping, clearHistory 
     } = useChat(activeBlueprint?.id);
 
-    // 1. Initialization: Load or Create Blueprint
+    // 1. Initialization
     useEffect(() => {
         const init = async () => {
             const keys = await storageService.getApiKeys();
             setAvailableKeys(keys);
             setSettings(storageService.getSettings().safety);
 
-            // Load history of general chats
             const allBlueprints = await storageService.getBlueprints();
             const generalChats = allBlueprints.filter(b => b.type === 'general_chat').sort((a,b) => b.updatedAt - a.updatedAt);
             setHistory(generalChats);
 
             if (threadId) {
-                // Load existing
                 const existing = generalChats.find(b => b.id === threadId);
-                if (existing) {
-                    setActiveBlueprint(existing);
-                } else {
-                    navigate('/assist', { replace: true }); // Invalid ID, reset
-                }
+                if (existing) setActiveBlueprint(existing);
+                else navigate('/assist', { replace: true });
             } else {
-                // No thread ID? Show "New Chat" state or empty
-                // We don't auto-create until user sends a message or explicitly clicks new
                 setActiveBlueprint(null);
             }
         };
@@ -60,7 +57,6 @@ export const GeneralChat = () => {
 
     // 2. Create New Thread Logic
     const createNewThread = async () => {
-        // Find or create default project
         const projects = await storageService.getProjects();
         let pid = projects[0]?.id;
         if (!pid) {
@@ -78,7 +74,7 @@ export const GeneralChat = () => {
             tags: ['general-chat'],
             content: '',
             status: 'draft',
-            type: 'general_chat', // MARKER
+            type: 'general_chat', 
             modelUsed: storageService.getSettings().activeModel,
             versions: []
         };
@@ -86,24 +82,18 @@ export const GeneralChat = () => {
         await storageService.saveBlueprint(newBp);
         setActiveBlueprint(newBp);
         navigate(`/assist?thread=${newBp.id}`);
-        
-        // Refresh history
-        const all = await storageService.getBlueprints();
-        setHistory(all.filter(b => b.type === 'general_chat').sort((a,b) => b.updatedAt - a.updatedAt));
-        
+        setHistory(prev => [newBp, ...prev]);
+        setIsHistoryOpen(false); // Close history on new chat
         return newBp;
     };
 
     // 3. Handle Send
     const handleSend = async (text: string, files?: File[]) => {
         let currentBp = activeBlueprint;
-        
-        // Lazy creation if no active thread
         if (!currentBp) {
             currentBp = await createNewThread();
         }
 
-        // Update Title if it's the first message
         if (currentBp.title === 'New Chat Session') {
             const summary = text.slice(0, 30) + (text.length > 30 ? '...' : '');
             currentBp.title = summary;
@@ -114,23 +104,18 @@ export const GeneralChat = () => {
         const settingsFull = storageService.getSettings();
         const apiKey = availableKeys[settingsFull.activeModel] || '';
 
-        // Same logic as Editor: Use sendMessage which delegates to Supervisor if needed
         await sendMessage(
             text,
             currentBp,
             apiKey,
             settingsFull.activeModel,
             settings,
-            // START JOB CALLBACK (For "Generate Blueprint" requests)
             async () => {
                 await startJob(currentBp!, text, apiKey, settingsFull.activeModel, settings);
             },
-            // DISPATCH TASK CALLBACK (For "Change X" requests)
             async (role, prompt) => {
-                // Pass blueprint content as context
                 const context = { 'Current Context': currentBp!.content };
                 await dispatchTask(role, prompt, context);
-                // Refresh blueprint after task
                 const updated = await storageService.getBlueprint(currentBp!.id);
                 if (updated) setActiveBlueprint(updated);
             }
@@ -145,7 +130,7 @@ export const GeneralChat = () => {
         e.stopPropagation();
         if (confirm("Delete this chat?")) {
             await storageService.deleteBlueprint(id);
-            await storageService.deleteConversation(id); // Clean up linked conversation
+            await storageService.deleteConversation(id);
             setHistory(prev => prev.filter(b => b.id !== id));
             if (activeBlueprint?.id === id) {
                 navigate('/assist');
@@ -154,57 +139,71 @@ export const GeneralChat = () => {
         }
     };
 
+    const handleExport = () => {
+        if (!conversation) return;
+        const text = conversation.messages.map(m => `[${m.role.toUpperCase()} - ${new Date(m.timestamp).toLocaleString()}]\n${m.content}\n`).join('\n---\n');
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat_export_${new Date().toISOString()}.txt`;
+        a.click();
+    };
+
     return (
-        <div className="h-full flex bg-[#0f0f0f] relative overflow-hidden">
+        <div className="h-full flex flex-col bg-[#0f0f0f] relative overflow-hidden">
             
-            {/* Sidebar (History) */}
-            <div className="w-64 border-r border-slate-800 bg-[#161616] flex flex-col shrink-0 hidden md:flex">
-                <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                    <span className="font-semibold text-slate-300 text-sm">Chat History</span>
-                    <button onClick={createNewThread} className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-500 transition">
-                        <Plus className="w-4 h-4" />
-                    </button>
+            {/* --- Top Bar --- */}
+            <div className="h-16 border-b border-[#333] flex items-center justify-between px-6 bg-[#161616] shrink-0 z-30">
+                <div className="flex items-center gap-4">
+                    <span className="text-lg font-bold text-gray-100 flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5 text-blue-500" />
+                        AI Assistant
+                    </span>
+                    {activeBlueprint && (
+                        <span className="text-xs text-gray-500 bg-[#2A2A2A] px-2 py-1 rounded hidden md:inline-block truncate max-w-[200px]">
+                            {activeBlueprint.title}
+                        </span>
+                    )}
                 </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                    {history.map(bp => (
-                        <div key={bp.id} className="group relative">
-                            <button
-                                onClick={() => { setActiveBlueprint(bp); navigate(`/assist?thread=${bp.id}`); }}
-                                className={`w-full text-left px-3 py-2.5 rounded-lg text-xs truncate transition-all pr-8 ${
-                                    activeBlueprint?.id === bp.id 
-                                    ? 'bg-blue-900/30 text-blue-400 border border-blue-500/30' 
-                                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                                }`}
-                            >
-                                {bp.title}
-                            </button>
-                            <button 
-                                onClick={(e) => handleDelete(e, bp.id)}
-                                className="absolute right-2 top-2.5 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-opacity"
-                            >
-                                <Trash2 className="w-3 h-3" />
-                            </button>
-                        </div>
-                    ))}
-                    {history.length === 0 && (
-                        <div className="text-center py-10 text-slate-600 text-xs italic">
-                            No recent chats.
-                        </div>
+                
+                <div className="flex items-center gap-2">
+                    {/* New Chat */}
+                    <button 
+                        onClick={createNewThread}
+                        className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                        <Plus className="w-4 h-4" />
+                        <span className="hidden sm:inline">New Chat</span>
+                    </button>
+
+                    {/* History Toggle */}
+                    <button 
+                        onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+                        className={`p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#2A2A2A] transition-colors ${isHistoryOpen ? 'bg-[#2A2A2A] text-white' : ''}`}
+                        title="Chat History"
+                    >
+                        <History className="w-5 h-5" />
+                    </button>
+
+                    {/* Export */}
+                    {activeBlueprint && (
+                        <button 
+                            onClick={handleExport}
+                            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#2A2A2A] transition-colors"
+                            title="Export Chat"
+                        >
+                            <Download className="w-5 h-5" />
+                        </button>
                     )}
                 </div>
             </div>
 
-            {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col min-w-0 relative">
+            {/* --- Main Content with Overlay Drawer --- */}
+            <div className="flex-1 relative overflow-hidden flex">
                 
-                {/* Mobile Header */}
-                <div className="md:hidden h-14 border-b border-slate-800 flex items-center justify-between px-4 bg-[#161616] shrink-0">
-                    <span className="font-bold text-slate-200">Kyoki Assistant</span>
-                    <button onClick={createNewThread} className="text-blue-400 font-medium text-sm">New Chat</button>
-                </div>
-
                 {/* Chat Container */}
-                <div className="flex-1 relative overflow-hidden">
+                <div className="flex-1 h-full relative z-10">
                     <ChatContainer
                         messages={conversation?.messages || []}
                         tasks={runPlan?.tasks || []}
@@ -217,9 +216,62 @@ export const GeneralChat = () => {
                             modelSelection: 'gemini', 
                             tools: { webSearch: false, researchMode: false, thinkingMode: false } 
                         }}
-                        onConfigChange={(c) => { /* Optional: Update config in DB */ }}
+                        onConfigChange={(c) => { /* Update config in DB */ }}
                     />
                 </div>
+
+                {/* History Drawer (Slide Over) */}
+                <div 
+                    className={`absolute top-0 right-0 bottom-0 w-80 bg-[#161616] border-l border-[#333] transform transition-transform duration-300 z-40 shadow-2xl flex flex-col ${
+                        isHistoryOpen ? 'translate-x-0' : 'translate-x-full'
+                    }`}
+                >
+                    <div className="p-4 border-b border-[#333] flex items-center justify-between shrink-0">
+                        <span className="font-semibold text-gray-200">Recent Chats</span>
+                        <button onClick={() => setIsHistoryOpen(false)} className="text-gray-500 hover:text-white">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                        {history.length === 0 ? (
+                            <div className="text-center py-10 text-gray-600 text-sm">No history yet.</div>
+                        ) : (
+                            history.map(bp => (
+                                <div key={bp.id} className="group relative">
+                                    <button
+                                        onClick={() => { 
+                                            setActiveBlueprint(bp); 
+                                            navigate(`/assist?thread=${bp.id}`); 
+                                            setIsHistoryOpen(false); 
+                                        }}
+                                        className={`w-full text-left px-3 py-3 rounded-lg text-sm transition-all pr-8 flex flex-col gap-1 ${
+                                            activeBlueprint?.id === bp.id 
+                                            ? 'bg-blue-900/20 text-blue-400 border border-blue-500/20' 
+                                            : 'text-gray-400 hover:bg-[#2A2A2A] hover:text-gray-200'
+                                        }`}
+                                    >
+                                        <span className="truncate font-medium">{bp.title}</span>
+                                        <span className="text-[10px] text-gray-600">{new Date(bp.updatedAt).toLocaleDateString()}</span>
+                                    </button>
+                                    <button 
+                                        onClick={(e) => handleDelete(e, bp.id)}
+                                        className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-1"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* Backdrop for Drawer on Mobile */}
+                {isHistoryOpen && (
+                    <div 
+                        className="absolute inset-0 bg-black/50 backdrop-blur-sm z-30 md:hidden"
+                        onClick={() => setIsHistoryOpen(false)}
+                    />
+                )}
             </div>
         </div>
     );
