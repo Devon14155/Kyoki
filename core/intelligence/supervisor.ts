@@ -183,7 +183,6 @@ export class Supervisor {
         }
 
         // 2. Hydrate Artifacts from Consensus Store (State Recovery)
-        // This ensures if user edited an artifact while PAUSED, we use the new version
         const artifacts: Record<string, string> = {};
         for (const t of plan.tasks) {
             if (t.status === 'COMPLETED') {
@@ -195,11 +194,10 @@ export class Supervisor {
         let baseContext = prompt;
 
         // 3. Execution Loop (State Machine)
-        // We reload the job each iter to check for Pause signals
         while (true) {
             job = await db.get<IntelligenceJob>('jobs', jobId);
             if (!job || job.status === 'PAUSED' || job.status === 'FAILED') {
-                break; // Exit loop, state is saved
+                break; 
             }
 
             // Identify Runnable Tasks
@@ -209,7 +207,6 @@ export class Supervisor {
             // Check completion
             if (completedIds.size === plan.tasks.length) {
                 // --- REVISION LOOP START ---
-                // Only run revision if we have a complete set of artifacts
                 if (settings.customSystemPrompt !== 'DISABLE_CRITIC') {
                     this.emit(job.id, 'VERIFY', 'TASK_STARTED', { message: 'Initiating Revision Loop...' });
                     const revisedArtifacts = await revisionLoop.run(
@@ -220,7 +217,6 @@ export class Supervisor {
                         settings, 
                         job.seed!
                     );
-                    // Update local artifacts with revised versions
                     Object.assign(artifacts, revisedArtifacts);
                 }
                 // --- REVISION LOOP END ---
@@ -242,9 +238,7 @@ export class Supervisor {
                  break;
             }
 
-            // If nothing new to run, wait for in-progress ones (Polling/Promise Race handled by parallel calls below)
             if (runnableTasks.length === 0) {
-                // Just wait a bit and re-loop (polling state)
                 await new Promise(r => setTimeout(r, 1000));
                 continue;
             }
@@ -254,7 +248,7 @@ export class Supervisor {
                 // A. Mark IN_PROGRESS
                 task.status = 'IN_PROGRESS';
                 task.startTime = Date.now();
-                await this.updateTaskInPlan(plan); // Persist status
+                await this.updateTaskInPlan(plan);
 
                 try {
                      await this.executeAgentTask(
@@ -264,18 +258,26 @@ export class Supervisor {
                     // B. Mark COMPLETED
                     task.status = 'COMPLETED';
                     task.endTime = Date.now();
-                    task.output = artifacts[task.section]; // Mirror for UI
-                    await this.updateTaskInPlan(plan); // Persist
+                    task.output = artifacts[task.section]; 
+                    
+                    // Metric Tracking
+                    if (task.startTime) {
+                        task.metrics = {
+                            tokensUsed: Math.ceil((task.output?.length || 0) / 4), // Approx
+                            latency: task.endTime - task.startTime,
+                            model: modelType
+                        };
+                    }
+
+                    await this.updateTaskInPlan(plan);
                 } catch (e: any) {
                     task.status = 'FAILED';
                     task.error = e.message;
                     await this.updateTaskInPlan(plan);
                     this.emit(job!.id, 'DISPATCH', 'SUPERVISOR_ALERT', { error: `Task ${task.role} Failed: ${e.message}` }, 'ERROR');
-                    // We don't fail the whole job immediately, allowing retry
                 }
             });
 
-            // Wait for at least one to finish or fail
             await Promise.all(promises);
         }
     }
@@ -299,7 +301,7 @@ export class Supervisor {
             bp.content = fullContent;
             bp.status = 'completed';
             bp.updatedAt = Date.now();
-            bp.runplanId = plan.id; // Link for future traceability
+            bp.runplanId = plan.id; 
             
             const verifyReport = verifier.verify(bp);
             bp.verification_report = verifyReport;
@@ -344,10 +346,15 @@ export class Supervisor {
         const response = await dispatcher.dispatchTask(task, taskContext, apiKey, modelType, settings, seed);
         this.emit(job.id, 'DISPATCH', 'MODEL_RESPONSE', { taskId: task.id, length: response.length });
 
-        // 2. Consensus & Store
-        const consensus = mmce.process(task.id, response, modelType);
-        await db.put('consensus', consensus); // Single Source of Truth
+        // 2. Consensus & Store (With upgraded Semantic Check)
+        // Pass baseContext (User requirements) to MMCE for semantic check
+        const consensus = await mmce.process(task.id, response, modelType, apiKey, modelType, baseContext);
+        await db.put('consensus', consensus); 
         
+        if (consensus.semanticDistance && consensus.semanticDistance > 0.4) {
+             this.emit(job.id, 'CONSENSUS', 'SUPERVISOR_ALERT', { message: `Semantic Drift Detected (${consensus.semanticDistance.toFixed(2)}) in ${task.section}.` }, 'WARN');
+        }
+
         // 3. Heuristic Tools Execution
         const toolResults = this.executeTools(task.role, consensus.final, artifacts);
         toolResults.forEach(res => {

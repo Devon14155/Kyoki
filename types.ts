@@ -1,6 +1,4 @@
 
-
-
 export type ModelType = 'gemini' | 'openai' | 'claude' | 'kimi' | 'glm';
 
 export type JobStatus = 'CREATED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PAUSED';
@@ -136,6 +134,11 @@ export interface Task {
     error?: string;
     startTime?: number;
     endTime?: number;
+    metrics?: {
+        tokensUsed: number;
+        latency: number;
+        model: string;
+    };
 }
 
 export interface RunPlan {
@@ -152,6 +155,7 @@ export interface ConsensusItem {
     confidence: number; // 0-1
     alternatives: { provider: string; content: string; score: number }[];
     evidence: { chunkId: string; similarity: number }[];
+    semanticDistance?: number; // Distance from requirements center
     provenance: {
         model: string;
         timestamp: number;

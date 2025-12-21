@@ -12,13 +12,15 @@ import {
   Zap,
   Search,
   MessageSquare,
-  History
+  History,
+  Activity
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 
 export const Layout = ({ children }: { children?: React.ReactNode }) => {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
+  const [devMode, setDevMode] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -29,6 +31,7 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
         }
     };
     window.addEventListener('keydown', handleKeyDown);
+    setDevMode(localStorage.getItem('kyoki_dev_mode') === 'true');
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
@@ -40,6 +43,10 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
     { icon: History, label: 'Chat History', path: '/chats' },
     { icon: Database, label: 'Context', path: '/context' },
   ];
+
+  if (devMode) {
+      navItems.push({ icon: Activity, label: 'Trace Viewer', path: '/trace' });
+  }
 
   const NavContent = () => (
     <div className="flex flex-col h-full bg-surface">

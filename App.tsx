@@ -8,8 +8,9 @@ import { SettingsPage } from './pages/Settings';
 import { Library } from './pages/Library';
 import { ContextManager } from './pages/ContextManager';
 import { ChatHistory } from './pages/ChatHistory'; 
-import { GeneralChat } from './pages/GeneralChat'; // Import
+import { GeneralChat } from './pages/GeneralChat'; 
 import { DevTools } from './pages/DevTools';
+import { TraceViewer } from './pages/TraceViewer'; // Import
 import { storageService } from './services/storage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -38,6 +39,7 @@ const App = () => {
             <Route path="/library" element={<Library />} />
             <Route path="/context" element={<ContextManager />} />
             <Route path="/devtools" element={<DevTools />} />
+            <Route path="/trace" element={<TraceViewer />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>
