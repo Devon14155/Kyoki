@@ -15,7 +15,6 @@ export const GeneralChat = () => {
     
     // UI State
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-    const [showSettings, setShowSettings] = useState(false); // Can be expanded for settings modal
 
     // Data State
     const [activeBlueprint, setActiveBlueprint] = useState<Blueprint | null>(null);
@@ -30,7 +29,7 @@ export const GeneralChat = () => {
     } = useIntelligence(activeBlueprint?.id);
 
     const { 
-        conversation, sendMessage, isTyping, clearHistory 
+        conversation, sendMessage, isTyping, clearHistory, updateConfig 
     } = useChat(activeBlueprint?.id);
 
     // 1. Initialization
@@ -216,7 +215,7 @@ export const GeneralChat = () => {
                             modelSelection: 'gemini', 
                             tools: { webSearch: false, researchMode: false, thinkingMode: false } 
                         }}
-                        onConfigChange={(c) => { /* Update config in DB */ }}
+                        onConfigChange={updateConfig}
                     />
                 </div>
 

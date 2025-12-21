@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { chatService } from '../services/chatService';
 import { extractContext } from '../utils/contextExtraction';
-import { Conversation, Message, Blueprint, Artifact, AppSettings, ModelType } from '../types';
+import { Conversation, Message, Blueprint, Artifact, AppSettings, ModelType, AgentConfig } from '../types';
 
 export const useChat = (blueprintId: string | undefined) => {
     const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -108,6 +108,16 @@ export const useChat = (blueprintId: string | undefined) => {
         }
         
         await saveConversation({ ...conversation, messages: msgs });
+    };
+
+    const updateConfig = async (newConfig: AgentConfig) => {
+        if (!conversation) return;
+        const updatedMetadata = {
+            ...conversation.metadata,
+            agentConfig: newConfig,
+            modelUsed: newConfig.modelSelection
+        };
+        await saveConversation({ ...conversation, metadata: updatedMetadata });
     };
 
     // Main Chat Logic
@@ -253,6 +263,7 @@ export const useChat = (blueprintId: string | undefined) => {
         isTyping,
         addMessage,
         updateLastMessage,
+        updateConfig,
         sendMessage,
         clearHistory
     };

@@ -19,8 +19,6 @@ import { CommandPalette } from './CommandPalette';
 export const Layout = ({ children }: { children?: React.ReactNode }) => {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
-  const [storageUsed, setStorageUsed] = useState(0);
-  const [storagePercent, setStoragePercent] = useState(0);
   const location = useLocation();
 
   useEffect(() => {
@@ -34,28 +32,6 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  useEffect(() => {
-    // Calculate LocalStorage usage
-    const calculateStorage = () => {
-        let total = 0;
-        for (const key in localStorage) {
-            if (localStorage.hasOwnProperty(key)) {
-                total += (localStorage[key].length * 2); 
-            }
-        }
-        const limit = 5 * 1024 * 1024;
-        const usedKB = Math.round(total / 1024);
-        const percent = Math.min(100, Math.round((total / limit) * 100));
-        
-        setStorageUsed(usedKB);
-        setStoragePercent(percent);
-    };
-
-    calculateStorage();
-    const interval = setInterval(calculateStorage, 5000); 
-    return () => clearInterval(interval);
-  }, [location.pathname]);
-
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: MessageSquare, label: 'AI Assistant', path: '/assist' },
@@ -63,7 +39,6 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
     { icon: Library, label: 'Library', path: '/library' },
     { icon: History, label: 'Chat History', path: '/chats' },
     { icon: Database, label: 'Context', path: '/context' },
-    { icon: Settings, label: 'Settings', path: '/settings' },
   ];
 
   const NavContent = () => (
@@ -113,22 +88,18 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
       </nav>
 
       <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-        <div className="bg-slate-100 dark:bg-slate-950 rounded-lg p-4 border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">STORAGE</span>
-                <span className="text-xs text-slate-600 dark:text-slate-500">{storagePercent}%</span>
-            </div>
-            <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                <div 
-                    className={`h-full w-1/4 rounded-full transition-all duration-500 ${storagePercent > 90 ? 'bg-red-500' : 'bg-blue-500'}`}
-                    style={{ width: `${storagePercent}%` }}
-                ></div>
-            </div>
-            <p className="text-[10px] text-slate-500 mt-2 flex justify-between">
-                <span>Local encrypted</span>
-                <span>{storageUsed} KB</span>
-            </p>
-        </div>
+        <NavLink
+            to="/settings"
+            onClick={() => setIsMobileNavOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${
+            location.pathname === '/settings'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100' 
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+        >
+            <Settings className={`w-5 h-5 ${location.pathname === '/settings' ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} />
+            <span className="font-medium">Settings</span>
+        </NavLink>
       </div>
     </div>
   );
