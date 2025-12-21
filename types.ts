@@ -1,5 +1,6 @@
 
 
+
 export type ModelType = 'gemini' | 'openai' | 'claude' | 'kimi' | 'glm';
 
 export type JobStatus = 'CREATED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PAUSED';
@@ -52,6 +53,7 @@ export interface Blueprint {
   tags: string[];
   content: string; 
   status: 'draft' | 'generating' | 'completed' | 'archived';
+  type?: 'standard' | 'general_chat'; // NEW: Distinguish chat threads from full blueprints
   modelUsed: ModelType;
   folderId?: string;
   versions: BlueprintVersion[];
@@ -251,7 +253,7 @@ export interface Message {
 
 export interface AgentConfig {
   enabledAgents: string[];
-  modelSelection: string;
+  modelSelection: ModelType;
   tools: {
     webSearch: boolean;
     researchMode: boolean;

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Paperclip, Sparkles, CornerDownLeft, Globe, Mic, X } from 'lucide-react';
-import { AgentConfig } from '../../types';
+import { ArrowUp, Paperclip, Sparkles, CornerDownLeft, Globe, Mic, X, Bot, Cpu, Zap, ChevronDown, Check } from 'lucide-react';
+import { AgentConfig, ModelType } from '../../types';
 
 interface ChatInputProps {
     onSend: (text: string, files?: File[]) => void;
@@ -14,8 +14,13 @@ interface ChatInputProps {
 export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerating, config, onConfigChange }) => {
     const [input, setInput] = useState('');
     const [files, setFiles] = useState<File[]>([]);
+    const [showAgentMenu, setShowAgentMenu] = useState(false);
+    const [showModelMenu, setShowModelMenu] = useState(false);
+    const [showToolsMenu, setShowToolsMenu] = useState(false);
+    
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const menusRef = useRef<HTMLDivElement>(null);
 
     // Auto-resize
     useEffect(() => {
@@ -24,6 +29,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
             textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
         }
     }, [input]);
+
+    // Click outside handler
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menusRef.current && !menusRef.current.contains(event.target as Node)) {
+                setShowAgentMenu(false);
+                setShowModelMenu(false);
+                setShowToolsMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const handleSend = () => {
         if ((!input.trim() && files.length === 0) || isGenerating) return;
@@ -44,8 +62,98 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
         setFiles(prev => prev.filter((_, i) => i !== idx));
     };
 
+    const agentsList = [
+        "Product Architect", "UX Architect", "Frontend Engineer", "Backend Architect", 
+        "Data Modeler", "Security Engineer", "DevOps Engineer", "SRE"
+    ];
+
+    const models: {id: ModelType, name: string}[] = [
+        { id: 'gemini', name: 'Gemini 3.0 Pro' },
+        { id: 'openai', name: 'GPT-4 Turbo' },
+        { id: 'claude', name: 'Claude 3.5 Sonnet' },
+        { id: 'kimi', name: 'Kimi (Moonshot)' },
+    ];
+
     return (
-        <div className="w-full max-w-4xl mx-auto px-4 pb-6">
+        <div className="w-full max-w-4xl mx-auto px-4 pb-6" ref={menusRef}>
+            {/* Popovers */}
+            <div className="relative">
+                {showAgentMenu && (
+                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-[#1E1E1E] border border-[#333] rounded-xl shadow-xl p-3 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                        <div className="flex justify-between items-center mb-2 pb-2 border-b border-[#333]">
+                            <span className="text-xs font-semibold text-gray-400">Active Agents</span>
+                            <button 
+                                onClick={() => onConfigChange({...config, enabledAgents: []})}
+                                className="text-[10px] text-blue-400 hover:underline"
+                            >
+                                Reset
+                            </button>
+                        </div>
+                        <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                            {agentsList.map(agent => (
+                                <button
+                                    key={agent}
+                                    onClick={() => {
+                                        const exists = config.enabledAgents.includes(agent);
+                                        const newAgents = exists 
+                                            ? config.enabledAgents.filter(a => a !== agent)
+                                            : [...config.enabledAgents, agent];
+                                        onConfigChange({...config, enabledAgents: newAgents});
+                                    }}
+                                    className={`flex items-center justify-between w-full px-2 py-1.5 rounded-lg text-xs transition-colors ${config.enabledAgents.includes(agent) ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:bg-[#2A2A2A]'}`}
+                                >
+                                    <span>{agent}</span>
+                                    {config.enabledAgents.includes(agent) && <Check className="w-3 h-3" />}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {showModelMenu && (
+                    <div className="absolute bottom-full left-20 mb-2 w-48 bg-[#1E1E1E] border border-[#333] rounded-xl shadow-xl p-1 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                        {models.map(m => (
+                            <button
+                                key={m.id}
+                                onClick={() => {
+                                    onConfigChange({...config, modelSelection: m.id});
+                                    setShowModelMenu(false);
+                                }}
+                                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs transition-colors ${config.modelSelection === m.id ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:bg-[#2A2A2A]'}`}
+                            >
+                                <span>{m.name}</span>
+                                {config.modelSelection === m.id && <Check className="w-3 h-3" />}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                
+                {showToolsMenu && (
+                    <div className="absolute bottom-full left-40 mb-2 w-48 bg-[#1E1E1E] border border-[#333] rounded-xl shadow-xl p-2 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                        {[
+                            { id: 'webSearch', label: 'Web Search', icon: Globe },
+                            { id: 'thinkingMode', label: 'Reasoning Mode', icon: Sparkles },
+                            { id: 'researchMode', label: 'Deep Research', icon: Zap }
+                        ].map(tool => (
+                            <button
+                                key={tool.id}
+                                onClick={() => onConfigChange({
+                                    ...config, 
+                                    tools: { ...config.tools, [tool.id]: !config.tools[tool.id as keyof typeof config.tools] }
+                                })}
+                                className={`flex items-center w-full px-3 py-2 rounded-lg text-xs transition-colors mb-1 gap-2 ${
+                                    config.tools[tool.id as keyof typeof config.tools] ? 'bg-emerald-500/10 text-emerald-400' : 'text-gray-400 hover:bg-[#2A2A2A]'
+                                }`}
+                            >
+                                <tool.icon className="w-3 h-3" />
+                                <span>{tool.label}</span>
+                                {config.tools[tool.id as keyof typeof config.tools] && <Check className="w-3 h-3 ml-auto" />}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+
             <div className="relative bg-[#1E1E1E] dark:bg-[#1E1E1E] bg-white border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl transition-all focus-within:ring-1 focus-within:ring-blue-500/50">
                 
                 {/* File Chips */}
@@ -71,13 +179,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                 />
 
                 <div className="flex items-center justify-between px-3 pb-3 pt-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                         <button 
                             onClick={() => fileInputRef.current?.click()}
                             className="p-2 text-gray-400 hover:text-gray-200 hover:bg-[#2A2A2A] rounded-lg transition-colors"
                             title="Attach Context"
                         >
-                            <Paperclip className="w-5 h-5" />
+                            <Paperclip className="w-4 h-4" />
                         </button>
                         <input 
                             type="file" 
@@ -87,32 +195,43 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                             onChange={e => setFiles([...files, ...Array.from(e.target.files || [])])}
                         />
                         
+                        <div className="h-4 w-px bg-[#333] mx-1"></div>
+
+                        {/* Agent Selector Toggle */}
                         <button 
-                            onClick={() => onConfigChange({...config, tools: {...config.tools, thinkingMode: !config.tools.thinkingMode}})}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                config.tools.thinkingMode 
-                                ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
-                                : 'text-gray-400 hover:text-gray-200 hover:bg-[#2A2A2A]'
+                            onClick={() => setShowAgentMenu(!showAgentMenu)}
+                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                showAgentMenu || config.enabledAgents.length > 0
+                                ? 'text-blue-400 bg-blue-500/10' 
+                                : 'text-gray-400 hover:bg-[#2A2A2A]'
                             }`}
                         >
-                            <Sparkles className="w-4 h-4" />
-                            <span>Use Blueprint</span>
+                            <Bot className="w-4 h-4" />
+                            <span className="hidden sm:inline">Agents</span>
+                            <ChevronDown className="w-3 h-3 opacity-50" />
                         </button>
 
-                        <button
-                             onClick={() => onConfigChange({...config, tools: {...config.tools, webSearch: !config.tools.webSearch}})}
-                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                config.tools.webSearch 
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                                : 'text-gray-400 hover:text-gray-200 hover:bg-[#2A2A2A]'
+                        {/* Model Selector Toggle */}
+                        <button 
+                            onClick={() => setShowModelMenu(!showModelMenu)}
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:bg-[#2A2A2A] transition-all"
+                        >
+                            <Cpu className="w-4 h-4" />
+                            <span className="hidden sm:inline">{models.find(m => m.id === config.modelSelection)?.name.split(' ')[0]}</span>
+                        </button>
+
+                        {/* Tools Toggle */}
+                        <button 
+                            onClick={() => setShowToolsMenu(!showToolsMenu)}
+                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                Object.values(config.tools).some(Boolean) ? 'text-emerald-400 bg-emerald-500/10' : 'text-gray-400 hover:bg-[#2A2A2A]'
                             }`}
                         >
-                            <Globe className="w-4 h-4" />
-                            <span className="hidden sm:inline">Web Search</span>
+                            <Zap className="w-4 h-4" />
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                         <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 font-medium">
                             <span>Return</span>
                             <div className="bg-[#2A2A2A] border border-[#333] rounded px-1.5 py-0.5">
@@ -141,7 +260,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
             </div>
             
             <p className="text-center text-[11px] text-gray-500 mt-4">
-                Kyoki generates architectural advice and blueprints. Please verify critical infrastructure decisions.
+                Kyoki 15-Agent System • {config.enabledAgents.length > 0 ? `${config.enabledAgents.length} Agents Active` : 'Auto-Orchestration Mode'}
             </p>
         </div>
     );

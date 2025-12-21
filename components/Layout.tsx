@@ -11,7 +11,8 @@ import {
   X,
   Zap,
   Search,
-  MessageSquare
+  MessageSquare,
+  History
 } from 'lucide-react';
 import { CommandPalette } from './CommandPalette';
 
@@ -57,9 +58,10 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: MessageSquare, label: 'AI Assistant', path: '/assist' },
     { icon: PlusSquare, label: 'New Blueprint', path: '/editor/new' },
-    { icon: MessageSquare, label: 'Team Chat', path: '/chats' },
     { icon: Library, label: 'Library', path: '/library' },
+    { icon: History, label: 'Chat History', path: '/chats' },
     { icon: Database, label: 'Context', path: '/context' },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];

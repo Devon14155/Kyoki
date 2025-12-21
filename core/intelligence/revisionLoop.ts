@@ -75,14 +75,14 @@ export const revisionLoop = {
             try {
                 // Use a modified seed for revision to avoid cache hit of the original erroneous output
                 const revisionSeed = `${seed}_rev_1`; 
-                const response = (await dispatcher.dispatchTask(
+                const response = await dispatcher.dispatchTask(
                     { id: `${agentRole}_REV`, role: agentRole, description: `Revise ${section} based on feedback.` },
                     context,
                     apiKey,
                     modelType,
                     settings,
                     revisionSeed
-                )) as string;
+                );
                 
                 updatedArtifacts[section] = response;
                 eventBus.emit(eventBus.createEnvelope(jobId, 'DISPATCH', 'MODEL_RESPONSE', { role: agentRole, length: response.length }));

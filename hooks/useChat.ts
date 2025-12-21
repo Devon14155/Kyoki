@@ -1,5 +1,4 @@
 
-
 import { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { chatService } from '../services/chatService';
@@ -9,6 +8,8 @@ export const useChat = (blueprintId: string | undefined) => {
     const [conversation, setConversation] = useState<Conversation | null>(null);
     const [loading, setLoading] = useState(true);
     const [isTyping, setIsTyping] = useState(false);
+    
+    const isGeneralMode = blueprintId === 'GENERAL';
 
     // Load or Initialize Conversation
     useEffect(() => {
@@ -20,7 +21,7 @@ export const useChat = (blueprintId: string | undefined) => {
         const load = async () => {
             setLoading(true);
             try {
-                // Try to find existing conversation for this blueprint
+                // Try to find existing conversation for this blueprint (or GENERAL tag)
                 const existing = await db.getConversationByBlueprint(blueprintId);
                 
                 if (existing) {
@@ -28,9 +29,9 @@ export const useChat = (blueprintId: string | undefined) => {
                 } else {
                     // Create new
                     const newConv: Conversation = {
-                        id: crypto.randomUUID(),
+                        id: isGeneralMode ? 'general-chat-v1' : crypto.randomUUID(),
                         blueprintId,
-                        title: 'New Conversation',
+                        title: isGeneralMode ? 'General Assistant' : 'New Conversation',
                         messages: [],
                         artifacts: [],
                         metadata: {
@@ -46,6 +47,7 @@ export const useChat = (blueprintId: string | undefined) => {
                         },
                         context: {}
                     };
+                    // Ensure we don't overwrite if race condition, though 'existing' check handles mostly
                     await db.put('conversations', newConv);
                     setConversation(newConv);
                 }
@@ -106,8 +108,8 @@ export const useChat = (blueprintId: string | undefined) => {
         apiKey: string,
         modelType: ModelType,
         settings: AppSettings['safety'],
-        startJobCallback: () => Promise<void>,
-        dispatchTaskCallback: (role: string, prompt: string) => Promise<void>
+        startJobCallback?: () => Promise<void>,
+        dispatchTaskCallback?: (role: string, prompt: string) => Promise<void>
     ) => {
         if (!conversation) return;
 
@@ -122,7 +124,71 @@ export const useChat = (blueprintId: string | undefined) => {
         setIsTyping(true);
 
         // 2. Decision Logic
-        // Case A: Blueprint is empty or very short -> Treat as "Generate New"
+        
+        // CASE A: General Chat (No Blueprint Context)
+        if (isGeneralMode) {
+             await addMessage({
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: '',
+                timestamp: Date.now()
+            });
+            
+            try {
+                let fullResponse = "";
+                await chatService.streamChatResponse(
+                    [...conversation.messages, { role: 'user', content: text }],
+                    null, // No blueprint context
+                    apiKey,
+                    modelType,
+                    settings,
+                    (chunk) => {
+                        fullResponse += chunk;
+                        setConversation(prev => {
+                            if (!prev) return null;
+                            const msgs = [...prev.messages];
+                            msgs[msgs.length - 1].content = fullResponse;
+                            return { ...prev, messages: msgs };
+                        });
+                    }
+                );
+                // Final Save
+                const msgs = [...conversation.messages];
+                msgs.push({
+                     id: crypto.randomUUID(), // New ID for final state
+                     role: 'assistant',
+                     content: fullResponse,
+                     timestamp: Date.now()
+                }); 
+                // Note: The previous logic relied on setConversation mutating via stream
+                // We just need to ensure DB is synced with final text
+                if (conversation) {
+                    const finalMsgs = [...conversation.messages, { 
+                        id: crypto.randomUUID(), 
+                        role: 'assistant' as const, 
+                        content: fullResponse, 
+                        timestamp: Date.now() 
+                    }];
+                    // To avoid duplicating what react state already shows (since we mutated previous messages in stream callback),
+                    // we actually just need to update the LAST message in the DB.
+                    const currentMsgs = [...conversation.messages]; // The React State is authoritative here due to closure
+                    // However, closure in `sendMessage` sees old `conversation`.
+                    // We rely on `updateLastMessage` helper usually, but here we did custom stream.
+                    
+                    // Simple fix: Reload recent state or just update last message
+                    // Let's use updateLastMessage which handles fetching correct index
+                    await updateLastMessage(fullResponse);
+                }
+            } catch (e: any) {
+                await updateLastMessage(`❌ Error: ${e.message}`, false);
+            } finally {
+                setIsTyping(false);
+            }
+            return;
+        }
+
+        // CASE B: Editor Mode - Blueprint Generation Trigger
+        // Blueprint is empty or very short -> Treat as "Generate New"
         if (!blueprint || !blueprint.content || blueprint.content.length < 50) {
             await addMessage({
                 id: crypto.randomUUID(),
@@ -130,12 +196,12 @@ export const useChat = (blueprintId: string | undefined) => {
                 content: 'Initializing full engineering pipeline...',
                 timestamp: Date.now()
             });
-            await startJobCallback(); // Triggers the Supervisor Pipeline
+            if (startJobCallback) await startJobCallback();
             setIsTyping(false);
             return;
         }
 
-        // Case B: Modification Request -> Trigger specific agent
+        // CASE C: Editor Mode - Modification Trigger
         if (chatService.isModificationRequest(text)) {
             const role = chatService.detectAgentRole(text);
             await addMessage({
@@ -146,8 +212,12 @@ export const useChat = (blueprintId: string | undefined) => {
             });
             
             try {
-                await dispatchTaskCallback(role, text);
-                await updateLastMessage(`✅ ${role} has processed your request.`, false);
+                if (dispatchTaskCallback) {
+                    await dispatchTaskCallback(role, text);
+                    await updateLastMessage(`✅ ${role} has processed your request.`, false);
+                } else {
+                    await updateLastMessage(`❌ Error: Dispatch callback missing.`, false);
+                }
             } catch (e: any) {
                 await updateLastMessage(`❌ Failed to execute agent task: ${e.message}`, false);
             }
@@ -155,10 +225,10 @@ export const useChat = (blueprintId: string | undefined) => {
             return;
         }
 
-        // Case C: Standard Q&A (Chat)
+        // CASE D: Editor Mode - Standard Q&A
         await addMessage({
             id: crypto.randomUUID(),
-            role: 'assistant', // Start directly as assistant for streaming
+            role: 'assistant',
             content: '',
             timestamp: Date.now()
         });
@@ -173,8 +243,6 @@ export const useChat = (blueprintId: string | undefined) => {
                 settings,
                 (chunk) => {
                     fullResponse += chunk;
-                    // Real-time update (debounced in UI ideally, but here direct)
-                    // We directly mutate state for stream speed, then save final
                     setConversation(prev => {
                         if (!prev) return null;
                         const msgs = [...prev.messages];
@@ -183,14 +251,7 @@ export const useChat = (blueprintId: string | undefined) => {
                     });
                 }
             );
-            // Final Save
-            if (conversation) {
-                // Fetch fresh state to avoid closure staleness issues
-                // (Simplified: We rely on the setConversation updater pattern above)
-                const msgs = [...conversation.messages];
-                msgs[msgs.length - 1].content = fullResponse;
-                await saveConversation({ ...conversation, messages: msgs });
-            }
+            await updateLastMessage(fullResponse);
         } catch (e: any) {
             await updateLastMessage(`❌ Chat Error: ${e.message}`, false);
         } finally {
