@@ -38,8 +38,6 @@ export const generateBlueprintStream = async (
   onChunk: (chunk: string) => void,
   systemOverride?: string
 ) => {
-  if (!apiKey) throw new Error(`Missing API Key for ${modelType}`);
-
   // PII Redaction
   let safePrompt = prompt;
   if (settings.piiRedaction) {
@@ -50,13 +48,14 @@ export const generateBlueprintStream = async (
 
   await withRetry(async () => {
       if (modelType === 'gemini') {
-        const ai = new GoogleGenAI({ apiKey: apiKey });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContentStream({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: safePrompt,
             config: { 
                 systemInstruction: system,
-                // Higher temperature for creative blueprints, but controlled
+                // Gemini 3 Thinking Config for advanced reasoning
+                thinkingConfig: { thinkingBudget: 2048 },
                 temperature: 0.7 
             },
         });
@@ -64,108 +63,111 @@ export const generateBlueprintStream = async (
             if (chunk.text) onChunk(chunk.text);
         }
       } 
-      else if (modelType === 'openai' || modelType === 'kimi' || modelType === 'glm') {
-          // Generic OpenAI compatible
-          const urls: Record<string, string> = {
-              openai: 'https://api.openai.com/v1/chat/completions',
-              kimi: 'https://api.moonshot.cn/v1/chat/completions',
-              glm: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
-          };
-          const models: Record<string, string> = {
-              openai: 'gpt-4-turbo',
-              kimi: 'moonshot-v1-8k',
-              glm: 'glm-4'
-          };
-          
-          const res = await fetch(urls[modelType], {
-              method: 'POST',
-              headers: { 
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${apiKey}`
-              },
-              body: JSON.stringify({
-                  model: models[modelType],
-                  messages: [
-                      { role: 'system', content: system },
-                      { role: 'user', content: safePrompt }
-                  ],
-                  stream: true
-              })
-          });
-          
-          if (!res.ok) {
-              const errText = await res.text();
-              throw { status: res.status, message: errText };
-          }
-          
-          const reader = res.body?.getReader();
-          const decoder = new TextDecoder();
-          while (true) {
-              const { done, value } = await reader!.read();
-              if (done) break;
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n');
-              for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                      try {
-                          const json = JSON.parse(line.slice(6));
-                          const txt = json.choices[0]?.delta?.content;
-                          if (txt) onChunk(txt);
-                      } catch (e) {}
-                  }
-              }
-          }
-      }
-      else if (modelType === 'claude') {
-          // Claude fetch logic
-          const res = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true'
-            },
-            body: JSON.stringify({
-              model: 'claude-3-opus-20240229',
-              system: system,
-              messages: [{ role: 'user', content: safePrompt }],
-              max_tokens: 4096,
-              stream: true
-            })
-          });
-          if (!res.ok) {
-              const errText = await res.text();
-              throw { status: res.status, message: errText };
-          }
-          const reader = res.body?.getReader();
-          const decoder = new TextDecoder();
-          while (true) {
-              const { done, value } = await reader!.read();
-              if (done) break;
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n');
-              for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                      try {
-                          const json = JSON.parse(line.slice(6));
-                          if (json.type === 'content_block_delta' && json.delta?.text) {
-                              onChunk(json.delta.text);
-                          }
-                      } catch (e) {}
-                  }
-              }
-          }
+      else {
+          if (!apiKey) throw new Error(`Missing API Key for ${modelType}`);
+          if (modelType === 'openai' || modelType === 'kimi' || modelType === 'glm') {
+            // Generic OpenAI compatible
+            const urls: Record<string, string> = {
+                openai: 'https://api.openai.com/v1/chat/completions',
+                kimi: 'https://api.moonshot.cn/v1/chat/completions',
+                glm: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+            };
+            const models: Record<string, string> = {
+                openai: 'gpt-4-turbo',
+                kimi: 'moonshot-v1-8k',
+                glm: 'glm-4'
+            };
+            
+            const res = await fetch(urls[modelType], {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: models[modelType],
+                    messages: [
+                        { role: 'system', content: system },
+                        { role: 'user', content: safePrompt }
+                    ],
+                    stream: true
+                })
+            });
+            
+            if (!res.ok) {
+                const errText = await res.text();
+                throw { status: res.status, message: errText };
+            }
+            
+            const reader = res.body?.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { done, value } = await reader!.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const json = JSON.parse(line.slice(6));
+                            const txt = json.choices[0]?.delta?.content;
+                            if (txt) onChunk(txt);
+                        } catch (e) {}
+                    }
+                }
+            }
+        }
+        else if (modelType === 'claude') {
+            // Claude fetch logic
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                model: 'claude-3-opus-20240229',
+                system: system,
+                messages: [{ role: 'user', content: safePrompt }],
+                max_tokens: 4096,
+                stream: true
+                })
+            });
+            if (!res.ok) {
+                const errText = await res.text();
+                throw { status: res.status, message: errText };
+            }
+            const reader = res.body?.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { done, value } = await reader!.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const json = JSON.parse(line.slice(6));
+                            if (json.type === 'content_block_delta' && json.delta?.text) {
+                                onChunk(json.delta.text);
+                            }
+                        } catch (e) {}
+                    }
+                }
+            }
+        }
       }
   });
 };
 
 export const getEmbedding = async (text: string, apiKey: string, modelType: ModelType): Promise<number[] | null> => {
-    if (!text || !apiKey) return null;
+    if (!text) return null;
     return withRetry(async () => {
         try {
             if (modelType === 'gemini') {
-                const ai = new GoogleGenAI({ apiKey });
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
                 const result = await ai.models.embedContent({ model: 'text-embedding-004', content: text });
                 return result.embedding.values;
             }
@@ -176,16 +178,17 @@ export const getEmbedding = async (text: string, apiKey: string, modelType: Mode
 };
 
 export const generateJSON = async (prompt: string, apiKey: string, model: ModelType, settings: any, system: string) => {
-    // 1. Optimized Path for Gemini (Native JSON Mode)
+    // 1. Optimized Path for Gemini (Native JSON Mode + Thinking)
     if (model === 'gemini') {
         return withRetry(async () => {
-            const ai = new GoogleGenAI({ apiKey });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3-flash-preview',
                 contents: prompt,
                 config: {
                     systemInstruction: system,
-                    responseMimeType: 'application/json' // Force strictly valid JSON
+                    responseMimeType: 'application/json', // Force strictly valid JSON
+                    thinkingConfig: { thinkingBudget: 2048 }
                 }
             });
             return JSON.parse(response.text || '{}');
@@ -213,6 +216,7 @@ export const generateJSON = async (prompt: string, apiKey: string, model: ModelT
 };
 
 export const checkApiKey = async (key: string, model: ModelType): Promise<boolean> => {
+    if (model === 'gemini') return true; // Handled via env
     return !!key; // Optimistic check
 };
 
@@ -230,10 +234,10 @@ export const validateClaimWithSearch = async (claim: string, apiKey: string, mod
 
     return withRetry(async () => {
         try {
-            const ai = new GoogleGenAI({ apiKey });
-            // Use flash for speed, check facts
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // Use flash 3 for speed and better reasoning
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3-flash-preview',
                 contents: `Fact check this claim. If it is generally true/plausible, say TRUE. If false or hallucinated, say FALSE. Claim: "${claim}"`,
                 config: {
                     tools: [{ googleSearch: {} }],

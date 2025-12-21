@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Blueprint, ChatMessage, ContextItem, ModelType, BlueprintVersion, AppSettings, EventEnvelope } from '../types';
@@ -66,7 +67,7 @@ export const Editor = () => {
                 modelUsed: settings.activeModel,
                 versions: []
             });
-            if (initialPrompt && keys[settings.activeModel]) {
+            if (initialPrompt && (keys[settings.activeModel] || settings.activeModel === 'gemini')) {
                 setTimeout(() => handleGenerate(initialPrompt), 500);
             }
         }
@@ -121,7 +122,8 @@ export const Editor = () => {
   const handleGenerate = async (promptText: string) => {
     if (!promptText.trim() || isGenerating || !blueprint) return;
     
-    if (!apiKey) {
+    // For Gemini, apiKey is ignored by aiService so it's fine if empty string here
+    if (!apiKey && modelType !== 'gemini') {
         setMessages(prev => [...prev, {
             id: crypto.randomUUID(),
             role: 'system',
@@ -147,7 +149,7 @@ export const Editor = () => {
             blueprint.projectId,
             blueprint.id,
             promptText,
-            apiKey,
+            apiKey, // Service handles environment key for Gemini
             modelType,
             safetySettings
         );
@@ -182,7 +184,7 @@ export const Editor = () => {
   };
 
   const handleSectionAction = async (title: string, content: string, action: 'explain'|'regenerate') => {
-      if (!apiKey) {
+      if (!apiKey && modelType !== 'gemini') {
           alert("Please configure API key in settings first.");
           return;
       }
@@ -238,7 +240,7 @@ export const Editor = () => {
                 onChange={handleModelChange}
                 className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer"
              >
-                 <option value="gemini">Gemini 2.5</option>
+                 <option value="gemini">Gemini 3.0 Flash (Thinking)</option>
                  <option value="openai">GPT-4</option>
                  <option value="claude">Claude 3</option>
                  <option value="kimi">Kimi</option>

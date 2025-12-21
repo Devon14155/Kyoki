@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { storageService } from '../services/storage';
 import { projectManager } from '../core/projectManager';
@@ -111,7 +112,7 @@ export const SettingsPage = () => {
   };
 
   const models: {id: ModelType, name: string}[] = [
-    { id: 'gemini', name: 'Google Gemini 2.5' },
+    { id: 'gemini', name: 'Google Gemini 3.0 Flash (Thinking)' },
     { id: 'openai', name: 'OpenAI GPT-4' },
     { id: 'claude', name: 'Anthropic Claude 3' },
     { id: 'kimi', name: 'Kimi (Moonshot)' },
@@ -173,34 +174,44 @@ export const SettingsPage = () => {
                     <div className="flex justify-between items-center mb-2">
                         <span className={`font-medium ${settings.activeModel === m.id ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{m.name}</span>
                         {keys[m.id] && <div className="w-2 h-2 rounded-full bg-emerald-500"></div>}
+                        {m.id === 'gemini' && <div className="w-2 h-2 rounded-full bg-blue-500"></div>}
                     </div>
                 </div>
             ))}
         </div>
 
         <div className="space-y-4 pt-4">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                API Key for <span className="text-blue-600 dark:text-blue-500 font-bold capitalize">{settings.activeModel}</span>
-            </label>
-            <div className="flex gap-4">
-                <div className="relative flex-1">
-                    <Input 
-                        type="password" 
-                        placeholder={`sk-...`}
-                        value={keyInput}
-                        onChange={(e) => setKeyInput(e.target.value)}
-                        className="pr-10"
-                    />
-                    {keys[settings.activeModel] && (
-                        <div className="absolute right-3 top-3 text-emerald-500">
-                            <ShieldCheck className="w-5 h-5" />
+            {settings.activeModel !== 'gemini' ? (
+                <>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        API Key for <span className="text-blue-600 dark:text-blue-500 font-bold capitalize">{settings.activeModel}</span>
+                    </label>
+                    <div className="flex gap-4">
+                        <div className="relative flex-1">
+                            <Input 
+                                type="password" 
+                                placeholder={`sk-...`}
+                                value={keyInput}
+                                onChange={(e) => setKeyInput(e.target.value)}
+                                className="pr-10"
+                            />
+                            {keys[settings.activeModel] && (
+                                <div className="absolute right-3 top-3 text-emerald-500">
+                                    <ShieldCheck className="w-5 h-5" />
+                                </div>
+                            )}
                         </div>
-                    )}
+                        <Button onClick={handleSaveKey} isLoading={isVerifying} disabled={!keyInput}>
+                            {keys[settings.activeModel] ? 'Update Key' : 'Save Key'}
+                        </Button>
+                    </div>
+                </>
+            ) : (
+                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 text-sm bg-blue-50 dark:bg-blue-500/10 p-3 rounded-lg border border-blue-200 dark:border-blue-500/20">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Gemini API Key is managed securely via environment.</span>
                 </div>
-                <Button onClick={handleSaveKey} isLoading={isVerifying} disabled={!keyInput}>
-                    {keys[settings.activeModel] ? 'Update Key' : 'Save Key'}
-                </Button>
-            </div>
+            )}
             
             {verifyStatus === 'success' && (
                 <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm bg-emerald-50 dark:bg-emerald-500/10 p-3 rounded-lg border border-emerald-200 dark:border-emerald-500/20">
