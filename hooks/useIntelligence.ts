@@ -1,7 +1,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../services/db';
-import { IntelligenceJob, RunPlan, JobStatus, EventEnvelope, AppSettings, ModelType, Blueprint, WorkerMessage } from '../types';
+import { IntelligenceJob, RunPlan, JobStatus, EventEnvelope, AppSettings, ModelType, Blueprint } from '../types';
+import { supervisor } from '../core/intelligence/supervisor';
+import { eventBus } from '../core/intelligence/eventBus';
 
 export interface UseIntelligenceReturn {
     isGenerating: boolean;
@@ -25,63 +27,21 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
     const [liveEvents, setLiveEvents] = useState<EventEnvelope[]>([]);
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     
-    const workerRef = useRef<Worker | null>(null);
+    // Use a Ref to track the current active job for the subscription callback
     const jobRef = useRef<string | null>(null);
 
-    // Initialize Worker
+    // Subscribe to EventBus (Main Thread)
     useEffect(() => {
-        if (!workerRef.current) {
-            try {
-                let workerScriptUrl: URL | string;
-                
-                // Robust URL resolution
-                try {
-                    const metaUrl = typeof import.meta !== 'undefined' ? import.meta.url : undefined;
-                    
-                    // If we have a valid module URL that isn't a blob (blobs break relative paths)
-                    if (metaUrl && !metaUrl.startsWith('blob:') && !metaUrl.startsWith('data:')) {
-                        workerScriptUrl = new URL('../core/intelligence/worker.ts', metaUrl);
-                    } else {
-                        // Fallback to absolute path from root origin
-                        // This assumes the app is served with /core/ available at root
-                        workerScriptUrl = new URL('/core/intelligence/worker.ts', window.location.origin);
-                    }
-                } catch (e) {
-                    console.warn("Worker URL construction failed, falling back to string path.");
-                    workerScriptUrl = '/core/intelligence/worker.ts';
-                }
-                
-                workerRef.current = new Worker(workerScriptUrl, { type: 'module' });
-                
-                workerRef.current.onmessage = (e) => {
-                    const msg = e.data;
-                    if (msg.type === 'EVENT') {
-                        const event = msg.payload as EventEnvelope;
-                        if (event.jobId === jobRef.current) {
-                            setLiveEvents(prev => [...prev, event]);
-                        }
-                    } else if (msg.type === 'DISPATCH_RESULT') {
-                        // Handled by dispatchTask promise logic
-                    }
-                };
-                
-                workerRef.current.onerror = (e) => {
-                    const msg = e.message || "Unknown Worker Error";
-                    const file = e.filename || "Unknown File";
-                    const line = e.lineno || 0;
-                    console.error(`Intelligence Worker Error in ${file}:${line}\n${msg}`);
-                };
-            } catch (e) {
-                console.error("Failed to initialize Intelligence Worker:", e);
+        const unsubscribe = eventBus.subscribe((event: EventEnvelope) => {
+            // Only update state if the event belongs to the active job we are watching
+            if (event.jobId === jobRef.current) {
+                setLiveEvents(prev => [...prev, event]);
             }
-        }
-
-        return () => {
-            // Cleanup if needed
-        };
+        });
+        return () => unsubscribe();
     }, []);
 
-    // Sync State with DB (Polling still useful for persistent state, events for real-time)
+    // Sync State with DB
     useEffect(() => {
         if (!activeJobId) return;
         jobRef.current = activeJobId;
@@ -108,14 +68,6 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
         };
     }, [activeJobId]);
 
-    const postToWorker = (msg: WorkerMessage) => {
-        if (workerRef.current) {
-            workerRef.current.postMessage(msg);
-        } else {
-            console.warn("Worker not initialized, cannot send message:", msg);
-        }
-    };
-
     const startJob = useCallback(async (
         blueprint: Blueprint, 
         prompt: string, 
@@ -126,68 +78,49 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
         setLiveEvents([]);
         setRunPlan(null);
         setActiveTaskId(null);
-        
-        postToWorker({ 
-            type: 'START_JOB', 
-            payload: { blueprint, prompt, apiKey, modelType, settings } 
-        });
-        
         setJobStatus('RUNNING');
         
-        // Listen for Job ID
-        const handler = (e: MessageEvent) => {
-            const msg = e.data;
-            if (msg.type === 'EVENT' && msg.payload.phase === 'PLAN' && !activeJobId) {
-                setActiveJobId(msg.payload.jobId);
-                workerRef.current?.removeEventListener('message', handler);
-            }
-        };
-        workerRef.current?.addEventListener('message', handler);
-
-    }, [activeJobId]);
+        try {
+            // Call Supervisor Directly
+            const jobId = await supervisor.startJob(
+                blueprint.projectId,
+                blueprint.id,
+                prompt,
+                apiKey,
+                modelType,
+                settings
+            );
+            setActiveJobId(jobId);
+        } catch (e) {
+            console.error("Failed to start job via Supervisor:", e);
+            setJobStatus('FAILED');
+        }
+    }, []);
 
     const pauseJob = useCallback(async () => {
-        if (activeJobId) postToWorker({ type: 'PAUSE_JOB', payload: { jobId: activeJobId } });
+        if (activeJobId) await supervisor.pauseJob(activeJobId);
     }, [activeJobId]);
 
     const resumeJob = useCallback(async () => {
         if (activeJobId) {
-            postToWorker({ type: 'RESUME_JOB', payload: { jobId: activeJobId } });
+            await supervisor.resumeJob(activeJobId);
             setJobStatus('RUNNING');
         }
     }, [activeJobId]);
 
     const retryTask = useCallback(async (taskId: string) => {
-        if (activeJobId) postToWorker({ type: 'RETRY_TASK', payload: { jobId: activeJobId, taskId } });
+        if (activeJobId) await supervisor.retryTask(activeJobId, taskId);
     }, [activeJobId]);
 
     const dispatchTask = useCallback(async (role: string, instruction: string, context: Record<string, string>) => {
-        // Optimistic job ID usage or throw
         const jId = activeJobId || jobRef.current;
         if (!jId) {
-             console.warn("No active job session for task dispatch. Using fallback/placeholder.");
-             // Ideally start a transient job here, but for now we error to UI
+             console.warn("No active job session for task dispatch.");
              throw new Error("No active job session");
         }
         
-        return new Promise<string>((resolve, reject) => {
-            const tempId = role; 
-            
-            const handler = (e: MessageEvent) => {
-                const msg = e.data;
-                if (msg.type === 'DISPATCH_RESULT' && msg.payload.id === tempId) {
-                    if (msg.payload.error) reject(new Error(msg.payload.error));
-                    else resolve(msg.payload.response);
-                    workerRef.current?.removeEventListener('message', handler);
-                }
-            };
-            workerRef.current?.addEventListener('message', handler);
-            
-            postToWorker({ 
-                type: 'DISPATCH_TASK', 
-                payload: { activeJobId: jId, role, instruction, context } 
-            });
-        });
+        // Call Supervisor Directly
+        return await supervisor.dispatchAgentTask(jId, role, instruction, context);
     }, [activeJobId]);
 
     return {
