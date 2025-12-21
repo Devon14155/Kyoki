@@ -9,7 +9,7 @@ import { projectManager } from '../core/projectManager';
 
 // Default settings
 export const defaultSettings: AppSettings = {
-  theme: 'dark',
+  theme: 'light', // Changed to light
   activeModel: 'gemini',
   userName: 'Engineer',
   safety: {
