@@ -67,7 +67,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Explicit cast to resolve potential type issues with React.Component
-    return (this.props as Props).children;
+    // Standard access to props.children
+    return this.props.children;
   }
 }
