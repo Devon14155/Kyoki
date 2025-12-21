@@ -60,11 +60,16 @@ export const useIntelligence = (blueprintId?: string): UseIntelligenceReturn => 
                         if (event.jobId === jobRef.current) {
                             setLiveEvents(prev => [...prev, event]);
                         }
+                    } else if (msg.type === 'DISPATCH_RESULT') {
+                        // Handled by dispatchTask promise logic
                     }
                 };
                 
                 workerRef.current.onerror = (e) => {
-                    console.error("Intelligence Worker Error:", e);
+                    const msg = e.message || "Unknown Worker Error";
+                    const file = e.filename || "Unknown File";
+                    const line = e.lineno || 0;
+                    console.error(`Intelligence Worker Error in ${file}:${line}\n${msg}`);
                 };
             } catch (e) {
                 console.error("Failed to initialize Intelligence Worker:", e);
