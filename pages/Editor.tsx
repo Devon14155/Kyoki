@@ -1,12 +1,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Blueprint, ChatMessage, ContextItem, ModelType, BlueprintVersion, AppSettings, EventEnvelope } from '../types';
+import { Blueprint, ChatMessage, ContextItem, ModelType, BlueprintVersion, AppSettings, EventEnvelope, RunPlan, JobStatus } from '../types';
 import { storageService } from '../services/storage';
 import { engine } from '../core/engine';
+import { supervisor } from '../core/intelligence/supervisor'; // Direct access for controls
+import { db } from '../services/db';
 import { eventBus } from '../core/intelligence/eventBus';
 import { explainSectionStream, regenerateSectionStream } from '../services/aiService';
 import { Button, MarkdownView, Badge, DiffViewer } from '../components/UI';
+import { PipelineVisualizer } from '../components/PipelineVisualizer';
 import { KYOKI_TOOLS } from '../services/toolPrompts';
 import { 
     Send, Cpu, Save, PanelRightClose, PanelRightOpen, 
@@ -26,6 +29,10 @@ export const Editor = () => {
   const [loading, setLoading] = useState(true);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   
+  // Pipeline State
+  const [runPlan, setRunPlan] = useState<RunPlan | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatus>('CREATED');
+
   const [showToc, setShowToc] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(true);
   const [headers, setHeaders] = useState<{ id: string, title: string, level: number }[]>([]);
@@ -52,7 +59,11 @@ export const Editor = () => {
 
         if (id && id !== 'new') {
             const saved = await storageService.getBlueprint(id);
-            if (saved) setBlueprint(saved);
+            if (saved) {
+                setBlueprint(saved);
+                // Try to find active or recent job for this blueprint to restore state
+                // This is a simplified lookup, ideally we store jobId in blueprint or route
+            }
         } else if (pid) {
             setBlueprint({
                 id: crypto.randomUUID(),
@@ -84,21 +95,38 @@ export const Editor = () => {
       logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [liveEvents]);
 
+  // Poll for Plan updates if job is running
+  useEffect(() => {
+      if (!activeJobId) return;
+
+      const interval = setInterval(async () => {
+          const job = await db.get<any>('jobs', activeJobId);
+          if (job) {
+              setJobStatus(job.status);
+              if (job.runPlanId) {
+                  const plan = await db.get<RunPlan>('runplans', job.runPlanId);
+                  setRunPlan(plan || null);
+              }
+              if (job.status === 'COMPLETED' || job.status === 'FAILED') {
+                  setIsGenerating(false);
+              }
+          }
+      }, 1000);
+
+      return () => clearInterval(interval);
+  }, [activeJobId]);
+
   useEffect(() => {
       if (!activeJobId) return;
 
       const unsub = eventBus.subscribe((event) => {
           if (event.jobId === activeJobId) {
               setLiveEvents(prev => [...prev, event]);
+              
               if (event.phase === 'FINALIZE' || event.eventType === 'CONSENSUS_READY') {
                  storageService.getBlueprint(blueprint!.id).then(bp => {
                      if (bp) setBlueprint(bp);
                  });
-              }
-              
-              if (event.phase === 'FINALIZE' && event.eventType === 'TASK_STARTED') {
-                  setIsGenerating(false);
-                  setActiveJobId(null);
               }
           }
       });
@@ -122,7 +150,6 @@ export const Editor = () => {
   const handleGenerate = async (promptText: string) => {
     if (!promptText.trim() || isGenerating || !blueprint) return;
     
-    // For Gemini, apiKey is ignored by aiService so it's fine if empty string here
     if (!apiKey && modelType !== 'gemini') {
         setMessages(prev => [...prev, {
             id: crypto.randomUUID(),
@@ -136,6 +163,7 @@ export const Editor = () => {
     setIsGenerating(true);
     setInput('');
     setLiveEvents([]);
+    setRunPlan(null); // Reset visualization
     
     setMessages(prev => [...prev, {
       id: crypto.randomUUID(),
@@ -149,11 +177,12 @@ export const Editor = () => {
             blueprint.projectId,
             blueprint.id,
             promptText,
-            apiKey, // Service handles environment key for Gemini
+            apiKey, 
             modelType,
             safetySettings
         );
         setActiveJobId(jobId);
+        setJobStatus('RUNNING');
     } catch (e) {
         setIsGenerating(false);
         setMessages(prev => [...prev, {
@@ -163,6 +192,28 @@ export const Editor = () => {
             timestamp: Date.now()
         }]);
     }
+  };
+
+  // Pipeline Controls
+  const handlePause = async () => {
+      if (activeJobId) {
+          await supervisor.pauseJob(activeJobId);
+      }
+  };
+
+  const handleResume = async () => {
+      if (activeJobId) {
+          await supervisor.resumeJob(activeJobId);
+          setJobStatus('RUNNING');
+          setIsGenerating(true);
+      }
+  };
+
+  const handleRetryTask = async (taskId: string) => {
+      if (activeJobId) {
+          await supervisor.retryTask(activeJobId, taskId);
+          // UI update will happen via polling
+      }
   };
 
   const downloadMarkdown = () => {
@@ -188,10 +239,7 @@ export const Editor = () => {
           alert("Please configure API key in settings first.");
           return;
       }
-      
-      // We switch to chat view to show the result
       setShowMobileChat(true);
-      
       const msgId = crypto.randomUUID();
       setMessages(prev => [...prev, {
           id: msgId,
@@ -247,25 +295,38 @@ export const Editor = () => {
                  <option value="glm">GLM-4</option>
              </select>
            </div>
-           <Badge color={isGenerating ? 'green' : 'slate'}>{isGenerating ? 'Active' : 'Idle'}</Badge>
+           <Badge color={jobStatus === 'RUNNING' ? 'green' : jobStatus === 'PAUSED' ? 'yellow' : 'slate'}>
+               {jobStatus === 'RUNNING' ? 'Running' : jobStatus === 'PAUSED' ? 'Paused' : 'Idle'}
+           </Badge>
         </div>
 
         {/* Messages / Logs Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          
+          {/* Pipeline Visualizer */}
+          {runPlan && (
+              <PipelineVisualizer 
+                  tasks={runPlan.tasks} 
+                  jobStatus={jobStatus}
+                  onPause={handlePause}
+                  onResume={handleResume}
+                  onRetry={handleRetryTask}
+              />
+          )}
           
           {/* Active Intelligence Job Visualization */}
           {liveEvents.length > 0 && (
               <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-blue-500/30 p-4 space-y-3 shadow-sm">
                   <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-2">
-                          <RefreshCw className={`w-3 h-3 ${isGenerating ? 'animate-spin' : ''}`}/> Intelligence Layer v3.0
+                          <RefreshCw className={`w-3 h-3 ${isGenerating ? 'animate-spin' : ''}`}/> Intelligence Log
                       </h3>
                       <span className="text-[10px] text-slate-500">Trace: {liveEvents[0]?.traceId.slice(0,6)}</span>
                   </div>
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                       {liveEvents.map((ev, i) => (
                           <div key={i} className="flex gap-2 text-xs animate-in slide-in-from-left-2 duration-300">
-                              <span className="text-slate-500 dark:text-slate-600 font-mono shrink-0 w-16">
+                              <span className="text-slate-500 dark:text-slate-600 font-mono shrink-0 w-12">
                                   {ev.timestamp.split('T')[1].slice(0,8)}
                               </span>
                               <div className="flex-1">
@@ -279,39 +340,11 @@ export const Editor = () => {
                                   }`}>
                                       [{ev.phase}]
                                   </span>
-                                  
-                                  {ev.eventType === 'TOOL_RESULT' ? (
-                                      <div className="mt-1 p-2 bg-white dark:bg-slate-950 rounded border border-slate-200 dark:border-slate-800">
-                                          <div className="flex items-center gap-2 mb-1">
-                                              <Terminal className="w-3 h-3 text-amber-500"/>
-                                              <span className="font-mono text-amber-600 dark:text-amber-400">{ev.payload.toolId}</span>
-                                              {ev.payload.success ? 
-                                                <Badge color="green">PASS</Badge> : 
-                                                <Badge color="red">ISSUES</Badge>
-                                              }
-                                          </div>
-                                          {ev.payload.warnings?.length > 0 && (
-                                              <ul className="list-disc list-inside text-red-600/80 dark:text-red-300/80 pl-1 mt-1">
-                                                  {ev.payload.warnings.map((w: string, idx: number) => (
-                                                      <li key={idx}>{w}</li>
-                                                  ))}
-                                              </ul>
-                                          )}
-                                          {ev.payload.data?.estimatedCost && (
-                                              <div className="text-emerald-600 dark:text-emerald-400 font-mono pl-1">
-                                                  Est. Cost: ${ev.payload.data.estimatedCost}/mo
-                                              </div>
-                                          )}
-                                      </div>
-                                  ) : (
-                                    <span className="text-slate-700 dark:text-slate-300">
-                                        {ev.eventType === 'MODEL_RESPONSE' ? `Generated ${ev.payload.length} chars` :
-                                        ev.eventType === 'TASK_STARTED' ? ev.payload.message || ev.payload.role :
-                                        ev.eventType === 'CONSENSUS_READY' ? `Consensus Confidence: ${(ev.payload.confidence*100).toFixed(0)}%` :
-                                        ev.eventType === 'VERIFICATION_REPORT' ? `Verification: ${ev.payload.status}` :
-                                        JSON.stringify(ev.payload)}
-                                    </span>
-                                  )}
+                                  <span className="text-slate-700 dark:text-slate-300">
+                                      {ev.eventType === 'MODEL_RESPONSE' ? `Generated ${ev.payload.length} chars` :
+                                       ev.eventType === 'TASK_STARTED' ? ev.payload.message || ev.payload.role :
+                                       ev.payload.message || JSON.stringify(ev.payload)}
+                                  </span>
                               </div>
                           </div>
                       ))}
@@ -343,12 +376,12 @@ export const Editor = () => {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(input); } }}
-                    disabled={isGenerating}
+                    disabled={isGenerating && jobStatus !== 'PAUSED'}
                 />
                 <div className="absolute right-2 bottom-2">
                     <button 
                         onClick={() => handleGenerate(input)}
-                        disabled={isGenerating || !input.trim()}
+                        disabled={(isGenerating && jobStatus !== 'PAUSED') || !input.trim()}
                         className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 transition-colors"
                     >
                         {isGenerating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -369,7 +402,6 @@ export const Editor = () => {
                 {blueprint.verification_report?.overall === 'PASS' && <Badge color="green"><CheckCircle2 className="w-3 h-3 mr-1"/> Verified</Badge>}
              </div>
              <div className="flex items-center gap-2">
-                 {/* Table of Contents Toggle */}
                  <div className="relative">
                      <button 
                         onClick={() => setShowToc(!showToc)} 

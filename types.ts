@@ -1,4 +1,5 @@
 
+
 export type ModelType = 'gemini' | 'openai' | 'claude' | 'kimi' | 'glm';
 
 export type JobStatus = 'CREATED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PAUSED';
@@ -128,8 +129,11 @@ export interface Task {
     dependencies: string[]; // Task IDs
     budget: { tokens: number; time_ms: number };
     priority: number;
-    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PAUSED';
     output?: string;
+    error?: string;
+    startTime?: number;
+    endTime?: number;
 }
 
 export interface RunPlan {
@@ -191,8 +195,8 @@ export interface EventEnvelope {
     traceId: string;
     jobId: string;
     timestamp: string;
-    phase: 'PLAN' | 'DISPATCH' | 'CONSENSUS' | 'TOOL_EXECUTION' | 'GROUNDING' | 'VERIFY' | 'FINALIZE';
-    eventType: 'TASK_STARTED' | 'MODEL_RESPONSE' | 'CONSENSUS_READY' | 'TOOL_RESULT' | 'GROUNDING_ISSUE' | 'VERIFICATION_REPORT' | 'SUPERVISOR_ALERT' | 'METRICS_UPDATE' | 'LOG';
+    phase: 'PLAN' | 'DISPATCH' | 'CONSENSUS' | 'TOOL_EXECUTION' | 'GROUNDING' | 'VERIFY' | 'FINALIZE' | 'CONTROL';
+    eventType: 'TASK_STARTED' | 'MODEL_RESPONSE' | 'CONSENSUS_READY' | 'TOOL_RESULT' | 'GROUNDING_ISSUE' | 'VERIFICATION_REPORT' | 'SUPERVISOR_ALERT' | 'METRICS_UPDATE' | 'LOG' | 'PIPELINE_PAUSED' | 'PIPELINE_RESUMED';
     level: 'INFO' | 'WARN' | 'ERROR';
     payload: any;
 }
@@ -207,6 +211,14 @@ export interface IntelligenceJob {
     createdAt: number;
     updatedAt: number;
     logs: EventEnvelope[]; // Transient logs for UI
+    
+    // For Resumability
+    contextConfig?: {
+        apiKey: string;
+        modelType: ModelType;
+        settings: AppSettings['safety'];
+        prompt: string;
+    }
 }
 
 export const BLUEPRINT_SECTIONS = [
