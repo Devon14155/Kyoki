@@ -150,17 +150,17 @@ export const GeneralChat = () => {
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#0f0f0f] relative overflow-hidden">
+        <div className="h-full flex flex-col bg-background relative overflow-hidden">
             
             {/* --- Top Bar --- */}
-            <div className="h-16 border-b border-[#333] flex items-center justify-between px-6 bg-[#161616] shrink-0 z-30">
+            <div className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 bg-surface shrink-0 z-30">
                 <div className="flex items-center gap-4">
-                    <span className="text-lg font-bold text-gray-100 flex items-center gap-2">
+                    <span className="text-lg font-bold text-slate-900 dark:text-gray-100 flex items-center gap-2">
                         <MessageSquare className="w-5 h-5 text-blue-500" />
                         AI Assistant
                     </span>
                     {activeBlueprint && (
-                        <span className="text-xs text-gray-500 bg-[#2A2A2A] px-2 py-1 rounded hidden md:inline-block truncate max-w-[200px]">
+                        <span className="text-xs text-slate-500 dark:text-gray-500 bg-slate-100 dark:bg-[#2A2A2A] px-2 py-1 rounded hidden md:inline-block truncate max-w-[200px]">
                             {activeBlueprint.title}
                         </span>
                     )}
@@ -179,7 +179,7 @@ export const GeneralChat = () => {
                     {/* History Toggle */}
                     <button 
                         onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                        className={`p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#2A2A2A] transition-colors ${isHistoryOpen ? 'bg-[#2A2A2A] text-white' : ''}`}
+                        className={`p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#2A2A2A] transition-colors ${isHistoryOpen ? 'bg-slate-100 dark:bg-[#2A2A2A] text-slate-900 dark:text-white' : ''}`}
                         title="Chat History"
                     >
                         <History className="w-5 h-5" />
@@ -189,7 +189,7 @@ export const GeneralChat = () => {
                     {activeBlueprint && (
                         <button 
                             onClick={handleExport}
-                            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#2A2A2A] transition-colors"
+                            className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#2A2A2A] transition-colors"
                             title="Export Chat"
                         >
                             <Download className="w-5 h-5" />
@@ -221,19 +221,19 @@ export const GeneralChat = () => {
 
                 {/* History Drawer (Slide Over) */}
                 <div 
-                    className={`absolute top-0 right-0 bottom-0 w-80 bg-[#161616] border-l border-[#333] transform transition-transform duration-300 z-40 shadow-2xl flex flex-col ${
+                    className={`absolute top-0 right-0 bottom-0 w-80 bg-surface border-l border-slate-200 dark:border-slate-800 transform transition-transform duration-300 z-40 shadow-2xl flex flex-col ${
                         isHistoryOpen ? 'translate-x-0' : 'translate-x-full'
                     }`}
                 >
-                    <div className="p-4 border-b border-[#333] flex items-center justify-between shrink-0">
-                        <span className="font-semibold text-gray-200">Recent Chats</span>
-                        <button onClick={() => setIsHistoryOpen(false)} className="text-gray-500 hover:text-white">
+                    <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+                        <span className="font-semibold text-slate-800 dark:text-gray-200">Recent Chats</span>
+                        <button onClick={() => setIsHistoryOpen(false)} className="text-slate-500 hover:text-slate-900 dark:text-gray-500 dark:hover:text-white">
                             <X className="w-5 h-5" />
                         </button>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                         {history.length === 0 ? (
-                            <div className="text-center py-10 text-gray-600 text-sm">No history yet.</div>
+                            <div className="text-center py-10 text-slate-500 dark:text-gray-600 text-sm">No history yet.</div>
                         ) : (
                             history.map(bp => (
                                 <div key={bp.id} className="group relative">
@@ -245,16 +245,16 @@ export const GeneralChat = () => {
                                         }}
                                         className={`w-full text-left px-3 py-3 rounded-lg text-sm transition-all pr-8 flex flex-col gap-1 ${
                                             activeBlueprint?.id === bp.id 
-                                            ? 'bg-blue-900/20 text-blue-400 border border-blue-500/20' 
-                                            : 'text-gray-400 hover:bg-[#2A2A2A] hover:text-gray-200'
+                                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20' 
+                                            : 'text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A] hover:text-slate-900 dark:hover:text-gray-200'
                                         }`}
                                     >
                                         <span className="truncate font-medium">{bp.title}</span>
-                                        <span className="text-[10px] text-gray-600">{new Date(bp.updatedAt).toLocaleDateString()}</span>
+                                        <span className="text-[10px] text-slate-500 dark:text-gray-600">{new Date(bp.updatedAt).toLocaleDateString()}</span>
                                     </button>
                                     <button 
                                         onClick={(e) => handleDelete(e, bp.id)}
-                                        className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-1"
+                                        className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 text-slate-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-opacity p-1"
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>

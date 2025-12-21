@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Badge } from '../components/UI';
@@ -102,7 +103,7 @@ export const Dashboard = () => {
           Describe the software architecture you want to build. Kyoki uses advanced multi-agent reasoning to produce FAANG-level engineering specifications.
         </p>
         
-        <div className="flex flex-col sm:flex-row gap-4 pt-4">
+        <div className="flex flex-col sm:flex-row gap-4 pt-4 items-stretch">
           <div className="relative flex-1 max-w-2xl">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Zap className="h-5 w-5 text-slate-400 dark:text-slate-500" />
@@ -110,7 +111,7 @@ export const Dashboard = () => {
             <input 
                 type="text" 
                 placeholder="e.g. A serverless microservices architecture for a real-time chat application..." 
-                className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-lg transition-all"
+                className="w-full pl-12 pr-4 h-14 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-lg transition-all"
                 onKeyDown={(e) => {
                     if(e.key === 'Enter') {
                         handleStartNew(e.currentTarget.value);
@@ -118,7 +119,7 @@ export const Dashboard = () => {
                 }}
             />
           </div>
-          <Button size="lg" onClick={() => handleStartNew()} className="shadow-lg shadow-blue-900/20 h-[60px]">
+          <Button size="lg" onClick={() => handleStartNew()} className="shadow-lg shadow-blue-900/20 h-14 px-8 whitespace-nowrap">
             Start Blank Blueprint
           </Button>
         </div>

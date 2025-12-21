@@ -29,15 +29,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
     useEffect(() => {
         if (transcript) {
             setInput(prev => {
-                // If the previous input ends with space or is empty, just append. Otherwise add space.
                 const prefix = prev.trim() ? prev + ' ' : '';
-                // Note: transcript accumulates, so we need a strategy. 
-                // Simple strategy: Replace input if empty, or append if not.
-                // Better strategy for this hook: transcript is the *current session* transcript.
-                // We'll just set input to transcript if it was empty, or append? 
-                // Let's assume the user speaks, we append. 
-                // Actually, simple appending might duplicate if hook updates frequently.
-                // Let's just set input to transcript for now to keep it simple, or manage a 'lastTranscript' ref.
                 return transcript; 
             });
         }
@@ -101,12 +93,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
             {/* Popovers */}
             <div className="relative">
                 {showAgentMenu && (
-                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-[#1E1E1E] border border-[#333] rounded-xl shadow-xl p-3 z-50 animate-in slide-in-from-bottom-2 fade-in">
-                        <div className="flex justify-between items-center mb-2 pb-2 border-b border-[#333]">
-                            <span className="text-xs font-semibold text-gray-400">Active Agents</span>
+                    <div className="absolute bottom-full left-0 mb-2 w-64 bg-surface border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-3 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                        <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                            <span className="text-xs font-semibold text-slate-500 dark:text-gray-400">Active Agents</span>
                             <button 
                                 onClick={() => onConfigChange({...config, enabledAgents: []})}
-                                className="text-[10px] text-blue-400 hover:underline"
+                                className="text-[10px] text-blue-500 hover:underline"
                             >
                                 Reset
                             </button>
@@ -122,7 +114,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                                             : [...config.enabledAgents, agent];
                                         onConfigChange({...config, enabledAgents: newAgents});
                                     }}
-                                    className={`flex items-center justify-between w-full px-2 py-1.5 rounded-lg text-xs transition-colors ${config.enabledAgents.includes(agent) ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:bg-[#2A2A2A]'}`}
+                                    className={`flex items-center justify-between w-full px-2 py-1.5 rounded-lg text-xs transition-colors ${config.enabledAgents.includes(agent) ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'}`}
                                 >
                                     <span>{agent}</span>
                                     {config.enabledAgents.includes(agent) && <Check className="w-3 h-3" />}
@@ -133,7 +125,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                 )}
 
                 {showModelMenu && (
-                    <div className="absolute bottom-full left-20 mb-2 w-48 bg-[#1E1E1E] border border-[#333] rounded-xl shadow-xl p-1 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                    <div className="absolute bottom-full left-20 mb-2 w-48 bg-surface border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-1 z-50 animate-in slide-in-from-bottom-2 fade-in">
                         {models.map(m => (
                             <button
                                 key={m.id}
@@ -141,7 +133,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                                     onConfigChange({...config, modelSelection: m.id});
                                     setShowModelMenu(false);
                                 }}
-                                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs transition-colors ${config.modelSelection === m.id ? 'bg-blue-600/20 text-blue-400' : 'text-gray-400 hover:bg-[#2A2A2A]'}`}
+                                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs transition-colors ${config.modelSelection === m.id ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'}`}
                             >
                                 <span>{m.name}</span>
                                 {config.modelSelection === m.id && <Check className="w-3 h-3" />}
@@ -151,7 +143,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                 )}
                 
                 {showToolsMenu && (
-                    <div className="absolute bottom-full left-40 mb-2 w-48 bg-[#1E1E1E] border border-[#333] rounded-xl shadow-xl p-2 z-50 animate-in slide-in-from-bottom-2 fade-in">
+                    <div className="absolute bottom-full left-40 mb-2 w-48 bg-surface border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-2 z-50 animate-in slide-in-from-bottom-2 fade-in">
                         {[
                             { id: 'webSearch', label: 'Web Search', icon: Globe },
                             { id: 'thinkingMode', label: 'Reasoning Mode', icon: Sparkles },
@@ -164,7 +156,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                                     tools: { ...config.tools, [tool.id]: !config.tools[tool.id as keyof typeof config.tools] }
                                 })}
                                 className={`flex items-center w-full px-3 py-2 rounded-lg text-xs transition-colors mb-1 gap-2 ${
-                                    config.tools[tool.id as keyof typeof config.tools] ? 'bg-emerald-500/10 text-emerald-400' : 'text-gray-400 hover:bg-[#2A2A2A]'
+                                    config.tools[tool.id as keyof typeof config.tools] ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'
                                 }`}
                             >
                                 <tool.icon className="w-3 h-3" />
@@ -176,15 +168,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                 )}
             </div>
 
-            <div className="relative bg-[#1E1E1E] dark:bg-[#1E1E1E] bg-white border border-gray-200 dark:border-[#333] rounded-2xl shadow-2xl transition-all focus-within:ring-1 focus-within:ring-blue-500/50">
+            <div className="relative bg-surface border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl transition-all focus-within:ring-1 focus-within:ring-blue-500/50">
                 
                 {/* File Chips */}
                 {files.length > 0 && (
                     <div className="flex flex-wrap gap-2 px-4 pt-3">
                         {files.map((f, i) => (
-                            <div key={i} className="flex items-center gap-2 bg-[#2A2A2A] px-3 py-1.5 rounded-lg text-xs text-gray-300 border border-[#333]">
+                            <div key={i} className="flex items-center gap-2 bg-slate-100 dark:bg-[#2A2A2A] px-3 py-1.5 rounded-lg text-xs text-slate-700 dark:text-gray-300 border border-slate-200 dark:border-slate-800">
                                 <span className="truncate max-w-[150px]">{f.name}</span>
-                                <button onClick={() => removeFile(i)} className="hover:text-red-400"><X className="w-3 h-3"/></button>
+                                <button onClick={() => removeFile(i)} className="hover:text-red-500"><X className="w-3 h-3"/></button>
                             </div>
                         ))}
                     </div>
@@ -196,7 +188,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Describe your system requirements, tech stack, or scalability goals..."
-                    className="w-full bg-transparent border-none focus:ring-0 px-5 py-4 min-h-[60px] max-h-[300px] resize-none text-gray-900 dark:text-gray-100 placeholder-gray-500 text-[15px] leading-relaxed"
+                    className="w-full bg-transparent border-none focus:ring-0 px-5 py-4 min-h-[60px] max-h-[300px] resize-none text-slate-900 dark:text-gray-100 placeholder-slate-400 dark:placeholder-gray-500 text-[15px] leading-relaxed"
                     disabled={isGenerating}
                 />
 
@@ -204,7 +196,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                     <div className="flex items-center gap-1">
                         <button 
                             onClick={() => fileInputRef.current?.click()}
-                            className="p-2 text-gray-400 hover:text-gray-200 hover:bg-[#2A2A2A] rounded-lg transition-colors"
+                            className="p-2 text-slate-400 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-[#2A2A2A] rounded-lg transition-colors"
                             title="Attach Context"
                         >
                             <Paperclip className="w-4 h-4" />
@@ -217,15 +209,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                             onChange={e => setFiles([...files, ...Array.from(e.target.files || [])])}
                         />
                         
-                        <div className="h-4 w-px bg-[#333] mx-1"></div>
+                        <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>
 
                         {/* Agent Selector Toggle */}
                         <button 
                             onClick={() => setShowAgentMenu(!showAgentMenu)}
                             className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
                                 showAgentMenu || config.enabledAgents.length > 0
-                                ? 'text-blue-400 bg-blue-500/10' 
-                                : 'text-gray-400 hover:bg-[#2A2A2A]'
+                                ? 'text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10' 
+                                : 'text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'
                             }`}
                         >
                             <Bot className="w-4 h-4" />
@@ -236,7 +228,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                         {/* Model Selector Toggle */}
                         <button 
                             onClick={() => setShowModelMenu(!showModelMenu)}
-                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:bg-[#2A2A2A] transition-all"
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A] transition-all"
                         >
                             <Cpu className="w-4 h-4" />
                             <span className="hidden sm:inline">{models.find(m => m.id === config.modelSelection)?.name.split(' ')[0]}</span>
@@ -246,7 +238,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                         <button 
                             onClick={() => setShowToolsMenu(!showToolsMenu)}
                             className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                Object.values(config.tools).some(Boolean) ? 'text-emerald-400 bg-emerald-500/10' : 'text-gray-400 hover:bg-[#2A2A2A]'
+                                Object.values(config.tools).some(Boolean) ? 'text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10' : 'text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'
                             }`}
                         >
                             <Zap className="w-4 h-4" />
@@ -260,7 +252,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                                 className={`p-2 rounded-xl flex items-center justify-center transition-all ${
                                     isListening 
                                     ? 'bg-red-500/20 text-red-500 animate-pulse' 
-                                    : 'text-gray-400 hover:bg-[#2A2A2A]'
+                                    : 'text-slate-400 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'
                                 }`}
                                 title={isListening ? "Stop Recording" : "Start Voice Input"}
                             >
@@ -268,9 +260,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                             </button>
                         )}
 
-                        <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 font-medium">
+                        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 dark:text-gray-500 font-medium">
                             <span>Return</span>
-                            <div className="bg-[#2A2A2A] border border-[#333] rounded px-1.5 py-0.5">
+                            <div className="bg-slate-100 dark:bg-[#2A2A2A] border border-slate-200 dark:border-slate-800 rounded px-1.5 py-0.5">
                                 <CornerDownLeft className="w-3 h-3" />
                             </div>
                         </div>
@@ -282,7 +274,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                                 ? 'bg-red-500 hover:bg-red-600 text-white'
                                 : (input.trim() || files.length > 0)
                                     ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20'
-                                    : 'bg-[#2A2A2A] text-gray-500 cursor-not-allowed'
+                                    : 'bg-slate-100 dark:bg-[#2A2A2A] text-slate-400 dark:text-gray-500 cursor-not-allowed'
                             }`}
                         >
                             {isGenerating ? (
@@ -295,7 +287,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                 </div>
             </div>
             
-            <p className="text-center text-[11px] text-gray-500 mt-4">
+            <p className="text-center text-[11px] text-slate-400 dark:text-gray-500 mt-4">
                 Kyoki 15-Agent System • {config.enabledAgents.length > 0 ? `${config.enabledAgents.length} Agents Active` : 'Auto-Orchestration Mode'}
             </p>
         </div>

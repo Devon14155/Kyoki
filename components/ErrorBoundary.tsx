@@ -1,3 +1,4 @@
+
 import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { Button } from './UI';
@@ -67,7 +68,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Explicit cast to resolve potential type issues with React.Component
-    return (this.props as any).children;
+    return this.props.children;
   }
 }

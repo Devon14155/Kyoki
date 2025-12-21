@@ -39,11 +39,22 @@ export const Editor = () => {
         if (id && id !== 'new') {
             const saved = await storageService.getBlueprint(id);
             if (saved) setBlueprint(saved);
-        } else if (pid) {
+        } else {
             // New Draft
+            let projectId = pid;
+            if (!projectId) {
+                const projects = await storageService.getProjects();
+                if (projects.length > 0) {
+                    projectId = projects[0].id;
+                } else {
+                    const p = await storageService.createProject('Default Project');
+                    projectId = p.id;
+                }
+            }
+
             setBlueprint({
                 id: crypto.randomUUID(),
-                projectId: pid,
+                projectId: projectId!,
                 title: 'Untitled Architecture',
                 description: 'New blueprint draft',
                 createdAt: Date.now(),

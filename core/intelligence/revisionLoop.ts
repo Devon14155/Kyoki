@@ -1,5 +1,4 @@
 
-
 import { eventBus } from './eventBus';
 import { dispatcher } from './dispatcher';
 import { TOOLS } from './tools';
@@ -82,7 +81,7 @@ export const revisionLoop = {
                     modelType,
                     settings,
                     revisionSeed
-                )) as string;
+                )) as unknown as string;
                 
                 updatedArtifacts[section] = response;
                 eventBus.emit(eventBus.createEnvelope(jobId, 'DISPATCH', 'MODEL_RESPONSE', { role: agentRole, length: response.length }));

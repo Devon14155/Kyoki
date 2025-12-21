@@ -20,14 +20,14 @@ interface ChatContainerProps {
 const PresetCard = ({ icon: Icon, title, desc, onClick }: { icon: any, title: string, desc: string, onClick: () => void }) => (
     <button 
         onClick={onClick}
-        className="text-left p-4 rounded-xl bg-[#1E1E1E] border border-[#333] hover:border-gray-600 transition-all hover:shadow-lg group flex flex-col gap-3 h-full"
+        className="text-left p-4 rounded-xl bg-surface border border-slate-200 dark:border-slate-800 hover:border-slate-400 dark:hover:border-gray-600 transition-all hover:shadow-lg group flex flex-col gap-3 h-full"
     >
-        <div className="w-8 h-8 rounded-lg bg-[#2A2A2A] flex items-center justify-center group-hover:bg-blue-600/20 group-hover:text-blue-400 transition-colors text-gray-400">
+        <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-[#2A2A2A] flex items-center justify-center group-hover:bg-blue-600/10 dark:group-hover:bg-blue-600/20 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors text-slate-500 dark:text-gray-400">
             <Icon className="w-4 h-4" />
         </div>
         <div>
-            <h3 className="text-sm font-semibold text-gray-200 mb-1 group-hover:text-blue-400 transition-colors">{title}</h3>
-            <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-gray-200 mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{title}</h3>
+            <p className="text-xs text-slate-500 dark:text-gray-500 leading-relaxed">{desc}</p>
         </div>
     </button>
 );
@@ -42,7 +42,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     }, [messages, activeTaskId]);
 
     return (
-        <div className="flex flex-col h-full relative bg-[#0f0f0f] text-gray-100">
+        <div className="flex flex-col h-full relative bg-background text-slate-900 dark:text-gray-100">
             
             {/* Main Content Area */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -51,17 +51,17 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
                         <div className="max-w-2xl w-full flex flex-col items-center text-center space-y-8">
                             
                             {/* Hero Icon */}
-                            <div className="w-20 h-20 bg-[#1E1E1E] rounded-2xl flex items-center justify-center shadow-2xl border border-[#333] relative overflow-hidden group">
+                            <div className="w-20 h-20 bg-surface rounded-2xl flex items-center justify-center shadow-2xl border border-slate-200 dark:border-slate-800 relative overflow-hidden group">
                                 <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <Bot className="w-10 h-10 text-gray-200" />
+                                <Bot className="w-10 h-10 text-slate-400 dark:text-gray-200" />
                             </div>
 
                             {/* Headings */}
                             <div className="space-y-3">
-                                <h1 className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-white to-gray-400">
+                                <h1 className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-slate-900 to-slate-500 dark:from-white dark:to-gray-400">
                                     Design Enterprise-Grade<br/>Software Architecture
                                 </h1>
-                                <p className="text-gray-500 text-sm md:text-base">
+                                <p className="text-slate-500 dark:text-gray-500 text-sm md:text-base">
                                     Powered by 15 specialized AI agents working in unison.
                                 </p>
                             </div>
@@ -105,7 +105,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             )}
 
             {/* Input Area */}
-            <div className="shrink-0 z-10 bg-gradient-to-t from-[#0f0f0f] via-[#0f0f0f] to-transparent pt-10">
+            <div className="shrink-0 z-10 bg-gradient-to-t from-background via-background to-transparent pt-10">
                 <ChatInput 
                     onSend={onSend} 
                     onStop={onStop} 

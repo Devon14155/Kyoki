@@ -1,9 +1,10 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storageService } from '../services/storage';
 import { Blueprint, Folder } from '../types';
 import { Button, Input, Badge } from '../components/UI';
-import { Search, Trash2, Folder as FolderIcon, FolderPlus, Box, Calendar, FolderOpen, ArrowRight } from 'lucide-react';
+import { Search, Trash2, Folder as FolderIcon, FolderPlus, Box, Calendar, FolderOpen, ArrowRight, X } from 'lucide-react';
 
 export const Library = () => {
   const navigate = useNavigate();
@@ -68,97 +69,25 @@ export const Library = () => {
     .filter(b => b.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div className="flex h-full flex-col md:flex-row">
-      {/* Mobile Folder Nav */}
-      <div className="md:hidden flex overflow-x-auto gap-2 p-4 bg-surface border-b border-slate-200 dark:border-slate-800 scrollbar-hide">
-          <button 
-            onClick={() => setActiveFolderId(null)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${activeFolderId === null ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400'}`}
-          >
-              <Box className="w-4 h-4" />
-              All
-          </button>
-          {folders.map(f => (
-              <button 
-                key={f.id}
-                onClick={() => setActiveFolderId(f.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${activeFolderId === f.id ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400'}`}
-              >
-                  <FolderIcon className="w-4 h-4" />
-                  {f.name}
-              </button>
-          ))}
-      </div>
-
-      {/* Desktop Sidebar Folders */}
-      <div className="w-64 border-r border-slate-200 dark:border-slate-800 bg-surface p-4 flex flex-col hidden md:flex shrink-0">
-          <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Folders</h2>
-              <button onClick={() => setIsCreatingFolder(true)} className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
-                  <FolderPlus className="w-4 h-4" />
-              </button>
-          </div>
-          
-          {isCreatingFolder && (
-              <div className="mb-4">
-                  <Input 
-                    autoFocus
-                    placeholder="Folder name..." 
-                    value={newFolderName}
-                    onChange={e => setNewFolderName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
-                    onBlur={() => setIsCreatingFolder(false)}
-                    className="text-sm py-1"
-                  />
-              </div>
-          )}
-
-          <div className="space-y-1 flex-1 overflow-y-auto">
-              <button 
-                onClick={() => setActiveFolderId(null)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${activeFolderId === null ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-              >
-                  <Box className="w-4 h-4" />
-                  All Blueprints
-              </button>
-              {folders.map(f => (
-                  <div key={f.id} className="group relative">
-                      <button 
-                        onClick={() => setActiveFolderId(f.id)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${activeFolderId === f.id ? 'bg-blue-600/10 text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                      >
-                          <FolderIcon className="w-4 h-4" />
-                          <span className="truncate">{f.name}</span>
-                      </button>
-                      <button 
-                        onClick={(e) => handleDeleteFolder(e, f.id)}
-                        className="absolute right-2 top-2 hidden group-hover:block text-slate-400 hover:text-red-500"
-                      >
-                          <Trash2 className="w-3 h-3" />
-                      </button>
-                  </div>
-              ))}
-          </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 p-4 lg:p-12 overflow-y-auto bg-background">
-          <div className="max-w-5xl mx-auto space-y-8">
+    <div className="flex flex-col h-full bg-background p-4 lg:p-12 overflow-y-auto">
+          <div className="max-w-5xl mx-auto space-y-8 w-full">
               <div className="flex items-center justify-between">
                  <div>
                     <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
                         {activeFolderId ? (
                             <>
-                                <FolderOpen className="w-6 h-6 md:w-8 md:h-8 text-blue-500" />
+                                <button onClick={() => setActiveFolderId(null)} className="hover:underline opacity-50 hover:opacity-100">Library</button>
+                                <span className="text-slate-300 dark:text-slate-600">/</span>
+                                <FolderOpen className="w-6 h-6 text-blue-500" />
                                 {folders.find(f => f.id === activeFolderId)?.name}
                             </>
-                        ) : 'All Blueprints'}
+                        ) : 'Library'}
                     </h1>
                     <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        {filtered.length} items found
+                        {filtered.length} blueprints
                     </p>
                  </div>
-                 <Button onClick={() => navigate('/editor/new')} size="sm" className="md:px-4 md:py-2">+ New</Button>
+                 <Button onClick={() => navigate('/editor/new')} size="sm" className="md:px-4 md:py-2">+ New Blueprint</Button>
               </div>
 
               <div className="relative">
@@ -171,67 +100,125 @@ export const Library = () => {
                  />
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                 {filtered.length === 0 ? (
-                     <div className="text-center py-20 text-slate-500 bg-surface rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                        {search ? 'No matches found.' : 'This folder is empty.'}
-                     </div>
-                 ) : (
-                     filtered.map(bp => (
-                         <div 
-                            key={bp.id} 
-                            onClick={() => navigate(`/editor/${bp.id}`)}
-                            className="group bg-surface border border-slate-200 dark:border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
-                         >
-                            <div className="flex items-start gap-4">
-                                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-950 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-800 group-hover:border-blue-500/30 shrink-0">
-                                    <Box className="w-6 h-6 text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{bp.title}</h3>
-                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                        <Badge color={bp.status === 'completed' ? 'green' : 'yellow'}>{bp.status}</Badge>
-                                        {bp.folderId && (
-                                            <Badge color="purple">
-                                                {folders.find(f => f.id === bp.folderId)?.name}
-                                            </Badge>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-3 mt-2 text-xs text-slate-500 dark:text-slate-600">
-                                        <span className="flex items-center gap-1"><Calendar className="w-3 h-3"/> {new Date(bp.updatedAt).toLocaleDateString()}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-2 mt-2 md:mt-0" onClick={e => e.stopPropagation()}>
-                                 <div className="relative group/move">
-                                     <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900" title="Move to Folder">
-                                         <FolderIcon className="w-4 h-4" />
-                                     </button>
-                                     <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl py-1 hidden group-hover/move:block z-10">
-                                         <button onClick={(e) => handleMoveToFolder(e, bp, undefined)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                             No Folder
-                                         </button>
-                                         {folders.map(f => (
-                                             <button key={f.id} onClick={(e) => handleMoveToFolder(e, bp, f.id)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                                 {f.name}
-                                             </button>
-                                         ))}
-                                     </div>
-                                 </div>
-                                 <button 
-                                    onClick={(e) => handleDeleteBlueprint(e, bp.id)}
-                                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                 >
-                                     <Trash2 className="w-4 h-4" />
-                                 </button>
-                            </div>
+              {/* Folders Section */}
+              {!activeFolderId && (
+                  <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Folders</h3>
+                          {!isCreatingFolder ? (
+                              <button onClick={() => setIsCreatingFolder(true)} className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 text-xs font-medium">
+                                  <FolderPlus className="w-3 h-3" /> New Folder
+                              </button>
+                          ) : (
+                              <div className="flex items-center gap-2">
+                                  <Input 
+                                    autoFocus
+                                    placeholder="Folder Name" 
+                                    value={newFolderName}
+                                    onChange={e => setNewFolderName(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+                                    className="py-1 text-xs h-8 w-40"
+                                  />
+                                  <Button size="sm" onClick={handleCreateFolder} disabled={!newFolderName}>Add</Button>
+                                  <button onClick={() => setIsCreatingFolder(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4"/></button>
+                              </div>
+                          )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                          {folders.map(f => (
+                              <div 
+                                key={f.id} 
+                                onClick={() => setActiveFolderId(f.id)}
+                                className="group relative bg-surface border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 p-4 rounded-xl cursor-pointer transition-all hover:shadow-sm flex flex-col items-center justify-center text-center gap-2"
+                              >
+                                  <div className="w-10 h-10 bg-blue-50 dark:bg-blue-900/10 rounded-full flex items-center justify-center text-blue-500 dark:text-blue-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors">
+                                      <FolderIcon className="w-5 h-5" />
+                                  </div>
+                                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate w-full px-2">{f.name}</span>
+                                  <button 
+                                    onClick={(e) => handleDeleteFolder(e, f.id)}
+                                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
+                                  >
+                                      <Trash2 className="w-3 h-3" />
+                                  </button>
+                              </div>
+                          ))}
+                          {folders.length === 0 && !isCreatingFolder && (
+                              <div className="col-span-full text-center py-4 text-slate-400 text-sm border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+                                  No folders yet.
+                              </div>
+                          )}
+                      </div>
+                  </div>
+              )}
+
+              {/* Blueprints Grid */}
+              <div className="space-y-4">
+                 <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                     {activeFolderId ? 'Items' : 'Recent Blueprints'}
+                 </h3>
+                 <div className="grid grid-cols-1 gap-4">
+                     {filtered.length === 0 ? (
+                         <div className="text-center py-20 text-slate-500 bg-surface rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                            {search ? 'No matches found.' : 'This folder is empty.'}
                          </div>
-                     ))
-                 )}
+                     ) : (
+                         filtered.map(bp => (
+                             <div 
+                                key={bp.id} 
+                                onClick={() => navigate(`/editor/${bp.id}`)}
+                                className="group bg-surface border border-slate-200 dark:border-slate-800 rounded-xl p-6 hover:border-blue-500/50 transition-colors cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
+                             >
+                                <div className="flex items-start gap-4">
+                                    <div className="w-12 h-12 bg-slate-100 dark:bg-slate-950 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-800 group-hover:border-blue-500/30 shrink-0">
+                                        <Box className="w-6 h-6 text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{bp.title}</h3>
+                                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                            <Badge color={bp.status === 'completed' ? 'green' : 'yellow'}>{bp.status}</Badge>
+                                            {bp.folderId && (
+                                                <Badge color="purple">
+                                                    {folders.find(f => f.id === bp.folderId)?.name}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500 dark:text-slate-600">
+                                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3"/> {new Date(bp.updatedAt).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-2 mt-2 md:mt-0" onClick={e => e.stopPropagation()}>
+                                     <div className="relative group/move">
+                                         <button className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900" title="Move to Folder">
+                                             <FolderIcon className="w-4 h-4" />
+                                         </button>
+                                         <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl py-1 hidden group-hover/move:block z-10">
+                                             <button onClick={(e) => handleMoveToFolder(e, bp, undefined)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                 No Folder
+                                             </button>
+                                             {folders.map(f => (
+                                                 <button key={f.id} onClick={(e) => handleMoveToFolder(e, bp, f.id)} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                     {f.name}
+                                                 </button>
+                                             ))}
+                                         </div>
+                                     </div>
+                                     <button 
+                                        onClick={(e) => handleDeleteBlueprint(e, bp.id)}
+                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                     >
+                                         <Trash2 className="w-4 h-4" />
+                                     </button>
+                                </div>
+                             </div>
+                         ))
+                     )}
+                  </div>
               </div>
           </div>
-      </div>
     </div>
   );
 };

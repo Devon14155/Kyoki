@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { storageService } from '../services/storage';
 import { vectorStore } from '../services/vectorStore';
@@ -85,33 +86,33 @@ export const ContextManager = () => {
         <p className="text-slate-600 dark:text-slate-400">Upload technical docs to RAG (Retrieval Augmented Generation) knowledge base.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Upload Card */}
-          <div className="md:col-span-1">
-             <Card className="h-full border-dashed border-2 bg-slate-50 dark:bg-slate-900/20 flex flex-col items-center justify-center text-center space-y-4 min-h-[200px]">
-                <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center">
-                    <Upload className="w-6 h-6 text-blue-500 dark:text-blue-400" />
-                </div>
-                <div>
-                    <h3 className="font-semibold text-slate-800 dark:text-slate-200">Upload Document</h3>
-                    <p className="text-xs text-slate-500 mt-1">.txt, .md, .json (Max 2MB)</p>
-                </div>
-                <div className="relative">
-                    <input 
-                        type="file" 
-                        accept=".txt,.md,.json"
-                        onChange={handleFileUpload}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        disabled={uploading}
-                    />
-                    <Button size="sm" isLoading={uploading} variant="secondary">Select File</Button>
-                </div>
-                {error && <p className="text-xs text-red-500 dark:text-red-400 px-4">{error}</p>}
-             </Card>
-          </div>
+      {/* Vertical Stack Layout */}
+      <div className="flex flex-col gap-8">
+          
+          {/* Top: Upload Section */}
+          <Card className="border-dashed border-2 bg-slate-50 dark:bg-slate-900/20 flex flex-col items-center justify-center text-center space-y-4 py-12">
+            <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center">
+                <Upload className="w-6 h-6 text-blue-500 dark:text-blue-400" />
+            </div>
+            <div>
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200">Upload Document</h3>
+                <p className="text-xs text-slate-500 mt-1">.txt, .md, .json (Max 2MB)</p>
+            </div>
+            <div className="relative">
+                <input 
+                    type="file" 
+                    accept=".txt,.md,.json"
+                    onChange={handleFileUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    disabled={uploading}
+                />
+                <Button size="md" isLoading={uploading} variant="secondary">Select File</Button>
+            </div>
+            {error && <p className="text-xs text-red-500 dark:text-red-400 px-4">{error}</p>}
+          </Card>
 
-          {/* Stats Card */}
-          <div className="md:col-span-2 space-y-4">
+          {/* Bottom: Stats & List */}
+          <div className="space-y-4">
               <div className="bg-surface border border-slate-200 dark:border-slate-800 rounded-xl p-6 flex items-center justify-between shadow-sm">
                    <div className="flex items-center gap-4">
                         <div className="p-3 bg-emerald-500/10 rounded-lg">
