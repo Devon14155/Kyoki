@@ -9,6 +9,7 @@ import { grounding } from './grounding';
 import { verifier } from './verifier';
 import { deterministic } from './deterministic';
 import { TOOLS } from './tools';
+import { revisionLoop } from './revisionLoop';
 import { IntelligenceJob, AppSettings, ModelType, ToolOutput, Task, RunPlan, ConsensusItem } from '../../types';
 
 export class Supervisor {
@@ -147,6 +148,23 @@ export class Supervisor {
 
             // Check completion
             if (completedIds.size === plan.tasks.length) {
+                // --- REVISION LOOP START ---
+                // Only run revision if we have a complete set of artifacts
+                if (settings.customSystemPrompt !== 'DISABLE_CRITIC') {
+                    this.emit(job.id, 'VERIFY', 'TASK_STARTED', { message: 'Initiating Revision Loop...' });
+                    const revisedArtifacts = await revisionLoop.run(
+                        job.id, 
+                        artifacts, 
+                        apiKey, 
+                        modelType, 
+                        settings, 
+                        job.seed!
+                    );
+                    // Update local artifacts with revised versions
+                    Object.assign(artifacts, revisedArtifacts);
+                }
+                // --- REVISION LOOP END ---
+
                 await this.finalizeJob(job, plan, artifacts);
                 break;
             }
