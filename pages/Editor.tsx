@@ -7,6 +7,7 @@ import { Button, MarkdownView, Badge } from '../components/UI';
 import { useIntelligence } from '../hooks/useIntelligence';
 import { useChat } from '../hooks/useChat';
 import { ChatContainer } from '../components/chat/ChatContainer';
+import { getModelDef } from '../services/modelRegistry';
 import { 
     Save, RefreshCw, Download, List, X, ShieldAlert, CheckCircle2, Bot 
 } from 'lucide-react';
@@ -81,7 +82,8 @@ export const Editor = () => {
       addMessage,
       updateLastMessage,
       sendMessage,
-      isTyping
+      isTyping,
+      updateConfig
   } = useChat(blueprint?.id);
 
   // --- Auto-Trigger Initial Prompt ---
@@ -115,19 +117,27 @@ export const Editor = () => {
 
   const handleSend = async (text: string, files?: File[]) => {
       if (!blueprint) return;
-      const settingsFull = storageService.getSettings();
-      const apiKey = availableKeys[settingsFull.activeModel] || '';
+      
+      // Determine Model: Chat Config > Blueprint > Global Default
+      const globalDefault = storageService.getSettings().activeModel;
+      const configModel = conversation?.metadata.agentConfig.modelSelection;
+      const selectedModelId = configModel || blueprint.modelUsed || globalDefault;
+
+      // Get Provider Key
+      const modelDef = getModelDef(selectedModelId);
+      const providerId = modelDef?.providerId || 'google';
+      const apiKey = availableKeys[providerId] || '';
 
       // Delegate to Chat Hook which handles Routing (Chat vs Agent Job)
       await sendMessage(
           text,
           blueprint,
           apiKey,
-          settingsFull.activeModel,
+          selectedModelId,
           settings,
           // Callback to start full pipeline
           async () => {
-              await startJob(blueprint, text, apiKey, settingsFull.activeModel, settings);
+              await startJob(blueprint, text, apiKey, selectedModelId, settings);
           },
           // Callback to dispatch single task
           async (role, prompt) => {
@@ -179,18 +189,20 @@ export const Editor = () => {
 
       {/* --- Left Panel: Chat Interface --- */}
       <div className={`flex-col border-r border-slate-200 dark:border-slate-800 bg-[#0f0f0f] flex transition-all duration-300 relative ${showMobileChat ? 'flex w-full md:w-[450px] lg:w-[500px]' : 'hidden md:flex md:w-[450px] lg:w-[500px]'}`}>
-          {conversation && (
-              <ChatContainer 
-                messages={conversation.messages}
-                tasks={runPlan?.tasks || []}
-                activeTaskId={activeTaskId}
-                isGenerating={isGenerating || isTyping}
-                onSend={handleSend}
-                onStop={handleStop}
-                config={conversation.metadata.agentConfig}
-                onConfigChange={(c) => {/* Update config logic */}}
-              />
-          )}
+          <ChatContainer 
+            messages={conversation?.messages || []}
+            tasks={runPlan?.tasks || []}
+            activeTaskId={activeTaskId}
+            isGenerating={isGenerating || isTyping}
+            onSend={handleSend}
+            onStop={handleStop}
+            config={conversation?.metadata.agentConfig || {
+                enabledAgents: [],
+                modelSelection: storageService.getSettings().activeModel,
+                tools: { webSearch: false, researchMode: false, thinkingMode: false }
+            }}
+            onConfigChange={updateConfig}
+          />
       </div>
 
       {/* --- Right Panel: Document View --- */}

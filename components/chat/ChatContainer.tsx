@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ProgressIndicator } from './ProgressIndicator';
@@ -36,10 +36,15 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     messages, tasks, activeTaskId, isGenerating, onSend, onStop, config, onConfigChange 
 }) => {
     const bottomRef = useRef<HTMLDivElement>(null);
+    const [showProgress, setShowProgress] = useState(true);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, activeTaskId]);
+
+    useEffect(() => {
+        if (isGenerating) setShowProgress(true);
+    }, [isGenerating]);
 
     return (
         <div className="flex flex-col h-full relative bg-background text-slate-900 dark:text-gray-100">
@@ -100,8 +105,12 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             </div>
 
             {/* Progress Overlay */}
-            {isGenerating && (
-                <ProgressIndicator tasks={tasks} activeTaskId={activeTaskId} />
+            {isGenerating && showProgress && (
+                <ProgressIndicator 
+                    tasks={tasks} 
+                    activeTaskId={activeTaskId} 
+                    onDismiss={() => setShowProgress(false)}
+                />
             )}
 
             {/* Input Area */}

@@ -6,6 +6,7 @@ import { useIntelligence } from '../hooks/useIntelligence';
 import { ChatContainer } from '../components/chat/ChatContainer';
 import { storageService } from '../services/storage';
 import { AppSettings, Blueprint } from '../types';
+import { getModelDef } from '../services/modelRegistry';
 import { Trash2, Plus, MessageSquare, History, X, Download } from 'lucide-react';
 
 export const GeneralChat = () => {
@@ -100,17 +101,24 @@ export const GeneralChat = () => {
             setHistory(prev => prev.map(b => b.id === currentBp!.id ? {...b, title: summary} : b));
         }
 
-        const settingsFull = storageService.getSettings();
-        const apiKey = availableKeys[settingsFull.activeModel] || '';
+        // Determine Model to use (Priority: Chat Config > Blueprint > Global Default)
+        const globalDefault = storageService.getSettings().activeModel;
+        const configModel = conversation?.metadata.agentConfig.modelSelection;
+        const selectedModelId = configModel || currentBp.modelUsed || globalDefault;
+
+        // Resolve API Key for the selected model's provider
+        const modelDef = getModelDef(selectedModelId);
+        const providerId = modelDef?.providerId || 'google';
+        const apiKey = availableKeys[providerId] || '';
 
         await sendMessage(
             text,
             currentBp,
             apiKey,
-            settingsFull.activeModel,
+            selectedModelId,
             settings,
             async () => {
-                await startJob(currentBp!, text, apiKey, settingsFull.activeModel, settings);
+                await startJob(currentBp!, text, apiKey, selectedModelId, settings);
             },
             async (role, prompt) => {
                 const context = { 'Current Context': currentBp!.content };
