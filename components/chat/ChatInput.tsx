@@ -1,8 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Paperclip, Sparkles, CornerDownLeft, Globe, Mic, X, Bot, Cpu, Zap, ChevronDown, Check } from 'lucide-react';
-import { AgentConfig, ModelType } from '../../types';
+import { ArrowUp, Paperclip, Sparkles, CornerDownLeft, Globe, Mic, X, Bot, Cpu, Zap, ChevronDown, Check, Settings } from 'lucide-react';
+import { AgentConfig } from '../../types';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { MODELS, PROVIDERS } from '../../services/modelRegistry';
+import { useNavigate } from 'react-router-dom';
 
 interface ChatInputProps {
     onSend: (text: string, files?: File[]) => void;
@@ -13,6 +15,7 @@ interface ChatInputProps {
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerating, config, onConfigChange }) => {
+    const navigate = useNavigate();
     const [input, setInput] = useState('');
     const [files, setFiles] = useState<File[]>([]);
     const [showAgentMenu, setShowAgentMenu] = useState(false);
@@ -25,7 +28,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
     const fileInputRef = useRef<HTMLInputElement>(null);
     const menusRef = useRef<HTMLDivElement>(null);
 
-    // Sync Voice Transcript to Input
     useEffect(() => {
         if (transcript) {
             setInput(prev => {
@@ -35,7 +37,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
         }
     }, [transcript]);
 
-    // Auto-resize
     useEffect(() => {
         if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
@@ -43,7 +44,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
         }
     }, [input]);
 
-    // Click outside handler
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (menusRef.current && !menusRef.current.contains(event.target as Node)) {
@@ -80,13 +80,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
         "Product Architect", "UX Architect", "Frontend Engineer", "Backend Architect", 
         "Data Modeler", "Security Engineer", "DevOps Engineer", "SRE"
     ];
-
-    const models: {id: ModelType, name: string}[] = [
-        { id: 'gemini', name: 'Gemini 3.0 Pro' },
-        { id: 'openai', name: 'GPT-4 Turbo' },
-        { id: 'claude', name: 'Claude 3.5 Sonnet' },
-        { id: 'kimi', name: 'Kimi (Moonshot)' },
-    ];
+    
+    // Group models by provider
+    const activeModelName = MODELS.find(m => m.id === config.modelSelection)?.name || config.modelSelection;
 
     return (
         <div className="w-full max-w-4xl mx-auto px-4 pb-6" ref={menusRef}>
@@ -125,20 +121,48 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                 )}
 
                 {showModelMenu && (
-                    <div className="absolute bottom-full left-20 mb-2 w-48 bg-surface border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl p-1 z-50 animate-in slide-in-from-bottom-2 fade-in">
-                        {models.map(m => (
-                            <button
-                                key={m.id}
-                                onClick={() => {
-                                    onConfigChange({...config, modelSelection: m.id});
-                                    setShowModelMenu(false);
-                                }}
-                                className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs transition-colors ${config.modelSelection === m.id ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'}`}
-                            >
-                                <span>{m.name}</span>
-                                {config.modelSelection === m.id && <Check className="w-3 h-3" />}
+                    <div className="absolute bottom-full left-10 md:left-20 mb-2 w-80 bg-surface border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 animate-in slide-in-from-bottom-2 fade-in overflow-hidden flex flex-col max-h-[500px]">
+                        <div className="p-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Select Model</span>
+                            <button onClick={() => navigate('/settings')} className="text-[10px] flex items-center gap-1 text-blue-500 hover:text-blue-600">
+                                <Settings className="w-3 h-3"/> Configure Keys
                             </button>
-                        ))}
+                        </div>
+                        <div className="overflow-y-auto custom-scrollbar p-2">
+                            {PROVIDERS.map(provider => {
+                                const providerModels = MODELS.filter(m => m.providerId === provider.id);
+                                if (providerModels.length === 0) return null;
+                                return (
+                                    <div key={provider.id} className="mb-3">
+                                        <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-2">
+                                            {provider.name}
+                                        </div>
+                                        <div className="space-y-1">
+                                            {providerModels.map(m => (
+                                                <button
+                                                    key={m.id}
+                                                    onClick={() => {
+                                                        onConfigChange({...config, modelSelection: m.id});
+                                                        setShowModelMenu(false);
+                                                    }}
+                                                    className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs transition-colors group ${config.modelSelection === m.id ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A]'}`}
+                                                >
+                                                    <div className="flex flex-col items-start">
+                                                        <span className="font-medium">{m.name}</span>
+                                                        <div className="flex gap-1 mt-0.5">
+                                                            {m.badges?.map(b => (
+                                                                <span key={b} className="text-[9px] bg-slate-200 dark:bg-slate-800 px-1 rounded text-slate-500 dark:text-slate-400">{b}</span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    {config.modelSelection === m.id && <Check className="w-3 h-3 text-blue-500" />}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
                 
@@ -228,10 +252,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                         {/* Model Selector Toggle */}
                         <button 
                             onClick={() => setShowModelMenu(!showModelMenu)}
-                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A] transition-all"
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-[#2A2A2A] transition-all max-w-[150px]"
                         >
                             <Cpu className="w-4 h-4" />
-                            <span className="hidden sm:inline">{models.find(m => m.id === config.modelSelection)?.name.split(' ')[0]}</span>
+                            <span className="truncate">{activeModelName}</span>
+                            <ChevronDown className="w-3 h-3 opacity-50" />
                         </button>
 
                         {/* Tools Toggle */}
@@ -260,12 +285,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, onStop, isGenerati
                             </button>
                         )}
 
-                        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 dark:text-gray-500 font-medium">
-                            <span>Return</span>
-                            <div className="bg-slate-100 dark:bg-[#2A2A2A] border border-slate-200 dark:border-slate-800 rounded px-1.5 py-0.5">
-                                <CornerDownLeft className="w-3 h-3" />
-                            </div>
-                        </div>
                         <button
                             onClick={isGenerating ? onStop : handleSend}
                             disabled={!input.trim() && files.length === 0 && !isGenerating}

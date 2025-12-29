@@ -1,16 +1,74 @@
 
-export type ModelType = 'gemini' | 'openai' | 'claude' | 'kimi' | 'glm';
+export type ModelType = string; // Flexible string to support dynamic registry
+
+export type ProviderId = 
+  | 'openai' 
+  | 'anthropic' 
+  | 'google' 
+  | 'deepseek' 
+  | 'grok' 
+  | 'kimi' 
+  | 'glm' 
+  | 'ollama' 
+  | 'nanobanana' 
+  | 'mistral' 
+  | 'cohere';
 
 export type JobStatus = 'CREATED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PAUSED';
 
+export interface ModelCapability {
+  vision: boolean;
+  toolCalling: boolean;
+  reasoning: boolean; // e.g. o1, deepseek-reasoner
+  streaming: boolean;
+  computerUse?: boolean;
+  realTimeSearch?: boolean;
+}
+
+export interface ModelDefinition {
+  id: string;
+  name: string;
+  providerId: ProviderId;
+  contextWindow: number;
+  inputPrice: number; // per 1M
+  outputPrice: number; // per 1M
+  capabilities: ModelCapability;
+  releaseDate: string;
+  description?: string;
+  badges?: string[];
+}
+
+export interface ProviderConfig {
+  apiKey: string;
+  baseUrl?: string;
+  enabled: boolean;
+  defaultModelId: string;
+}
+
 export interface AppSettings {
   theme: 'dark' | 'light';
-  activeModel: ModelType;
+  activeModel: string; // Current global selection
   userName: string;
+  
+  // Provider Configurations (BYOK)
+  providers: Record<ProviderId, ProviderConfig>;
+
+  // Safety & Advanced
   safety: {
       blockHarmful: boolean;
       piiRedaction: boolean;
       customSystemPrompt?: string;
+      costThreshold?: number; // Warn if request > $X
+      autoSwitchVision: boolean; // Auto-switch if model lacks vision
+  };
+  
+  // Defaults per task type
+  defaults: {
+      chat: string;
+      coding: string;
+      vision: string;
+      reasoning: string;
+      longContext: string;
   };
 }
 
@@ -21,7 +79,7 @@ export interface Project {
     createdAt: number;
     updatedAt: number;
     settings?: {
-        providerOrder?: ModelType[];
+        providerOrder?: string[];
         tokenCap?: number;
     };
 }
@@ -52,7 +110,7 @@ export interface Blueprint {
   content: string; 
   status: 'draft' | 'generating' | 'completed' | 'archived';
   type?: 'standard' | 'general_chat'; 
-  modelUsed: ModelType;
+  modelUsed: string;
   folderId?: string;
   versions: BlueprintVersion[];
   
@@ -224,7 +282,7 @@ export interface IntelligenceJob {
     // For Resumability
     contextConfig?: {
         apiKey: string;
-        modelType: ModelType;
+        modelType: string;
         settings: AppSettings['safety'];
         prompt: string;
     }
@@ -232,7 +290,7 @@ export interface IntelligenceJob {
 
 // --- Worker Types ---
 export type WorkerMessage = 
-    | { type: 'START_JOB'; payload: { blueprint: Blueprint; prompt: string; apiKey: string; modelType: ModelType; settings: AppSettings['safety'] } }
+    | { type: 'START_JOB'; payload: { blueprint: Blueprint; prompt: string; apiKey: string; modelType: string; settings: AppSettings['safety'] } }
     | { type: 'PAUSE_JOB'; payload: { jobId: string } }
     | { type: 'RESUME_JOB'; payload: { jobId: string } }
     | { type: 'RETRY_TASK'; payload: { jobId: string; taskId: string } }
@@ -263,12 +321,13 @@ export interface Message {
     modelUsed?: string;
     tokensUsed?: number;
     toolsUsed?: string[];
+    reasoningContent?: string;
   };
 }
 
 export interface AgentConfig {
   enabledAgents: string[];
-  modelSelection: ModelType;
+  modelSelection: string;
   tools: {
     webSearch: boolean;
     researchMode: boolean;

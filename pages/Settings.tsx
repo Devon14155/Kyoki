@@ -3,19 +3,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { storageService } from '../services/storage';
 import { projectManager } from '../core/projectManager';
 import { checkApiKey } from '../services/aiService';
-import { AppSettings, ModelType } from '../types';
-import { Button, Input, Card, Switch } from '../components/UI';
-import { Key, ShieldCheck, AlertCircle, CheckCircle2, Moon, Sun, Lock, EyeOff, FileCode, HardDrive, Download, Upload, Terminal } from 'lucide-react';
+import { AppSettings, ProviderId } from '../types';
+import { Button, Input, Card, Switch, Badge } from '../components/UI';
+import { Key, ShieldCheck, AlertCircle, CheckCircle2, Moon, Sun, Lock, EyeOff, HardDrive, Download, Upload, Terminal, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { PROVIDERS, MODELS } from '../services/modelRegistry';
 
 export const SettingsPage = () => {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<AppSettings>(storageService.getSettings());
   const [keys, setKeys] = useState<Record<string, string>>({});
-  const [keyInput, setKeyInput] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyStatus, setVerifyStatus] = useState<'idle' | 'success' | 'error'>('idle');
   
+  // Verification State
+  const [verifyingProvider, setVerifyingProvider] = useState<string | null>(null);
+  const [verifyResults, setVerifyResults] = useState<Record<string, 'success' | 'error' | 'idle'>>({});
+
   const [devMode, setDevMode] = useState(false);
   const [passphrase, setPassphrase] = useState('');
   const [isExporting, setIsExporting] = useState(false);
@@ -25,10 +27,9 @@ export const SettingsPage = () => {
   useEffect(() => {
     storageService.getApiKeys().then(loadedKeys => {
         setKeys(loadedKeys);
-        setKeyInput(loadedKeys[settings.activeModel] || '');
     });
     setDevMode(localStorage.getItem('kyoki_dev_mode') === 'true');
-  }, [settings.activeModel]);
+  }, []);
 
   const saveSettings = (newSettings: AppSettings) => {
       setSettings(newSettings);
@@ -40,29 +41,35 @@ export const SettingsPage = () => {
       }
   };
 
+  const handleKeyChange = (providerId: string, val: string) => {
+      setKeys(prev => ({ ...prev, [providerId]: val }));
+      // Mark as changed/unverified
+      setVerifyResults(prev => ({ ...prev, [providerId]: 'idle' }));
+  };
+
+  const saveKey = async (providerId: string) => {
+      const key = keys[providerId];
+      setVerifyingProvider(providerId);
+      
+      const success = await checkApiKey(key, providerId);
+      
+      setVerifyingProvider(null);
+      setVerifyResults(prev => ({ ...prev, [providerId]: success ? 'success' : 'error' }));
+
+      if (success) {
+          await storageService.saveApiKeys(keys);
+          // Enable provider
+          const newSettings = { ...settings };
+          newSettings.providers[providerId as ProviderId].enabled = true;
+          saveSettings(newSettings);
+      }
+  };
+
   const toggleDevMode = (enabled: boolean) => {
       setDevMode(enabled);
       localStorage.setItem('kyoki_dev_mode', String(enabled));
   };
-
-  const handleSaveKey = async () => {
-    if (!keyInput.trim()) return;
-    setIsVerifying(true);
-    setVerifyStatus('idle');
-    const isValid = await checkApiKey(keyInput, settings.activeModel);
-    setIsVerifying(false);
-    if (isValid) {
-        setVerifyStatus('success');
-        const newKeys = { ...keys, [settings.activeModel]: keyInput };
-        setKeys(newKeys);
-        await storageService.saveApiKeys(newKeys);
-        storageService.saveSettings(settings);
-        setTimeout(() => setVerifyStatus('idle'), 3000);
-    } else {
-        setVerifyStatus('error');
-    }
-  };
-
+  
   const handleExport = async () => {
       if (!passphrase.trim()) {
           alert("Please enter a passphrase to encrypt your backup.");
@@ -111,19 +118,11 @@ export const SettingsPage = () => {
       }
   };
 
-  const models: {id: ModelType, name: string}[] = [
-    { id: 'gemini', name: 'Google Gemini 3.0 Flash (Thinking)' },
-    { id: 'openai', name: 'OpenAI GPT-4' },
-    { id: 'claude', name: 'Anthropic Claude 3' },
-    { id: 'kimi', name: 'Kimi (Moonshot)' },
-    { id: 'glm', name: 'GLM-4 (Zhipu)' },
-  ];
-
   return (
-    <div className="max-w-3xl mx-auto p-6 lg:p-12 space-y-8">
+    <div className="max-w-4xl mx-auto p-6 lg:p-12 space-y-8 pb-20">
       <div>
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Settings</h1>
-        <p className="text-slate-600 dark:text-slate-400">Manage your BYOK keys, theme, and safety preferences.</p>
+        <p className="text-slate-600 dark:text-slate-400">Configure your AI providers (BYOK), defaults, and security.</p>
       </div>
 
       <Card className="flex items-center justify-between">
@@ -153,79 +152,91 @@ export const SettingsPage = () => {
       <Card className="space-y-6">
         <div className="flex items-center gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
             <Key className="w-5 h-5 text-blue-500" />
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Model Configuration</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">AI Providers (BYOK)</h2>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {models.map(m => (
-                <div 
-                    key={m.id}
-                    onClick={() => {
-                        saveSettings({...settings, activeModel: m.id});
-                        setKeyInput(keys[m.id] || '');
-                        setVerifyStatus('idle');
-                    }}
-                    className={`cursor-pointer p-4 rounded-xl border transition-all ${
-                        settings.activeModel === m.id 
-                        ? 'bg-blue-50 dark:bg-blue-600/10 border-blue-500 ring-1 ring-blue-500/50' 
-                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
-                    }`}
-                >
-                    <div className="flex justify-between items-center mb-2">
-                        <span className={`font-medium ${settings.activeModel === m.id ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>{m.name}</span>
-                        {keys[m.id] && <div className="w-2 h-2 rounded-full bg-emerald-500"></div>}
-                        {m.id === 'gemini' && <div className="w-2 h-2 rounded-full bg-blue-500"></div>}
-                    </div>
-                </div>
-            ))}
-        </div>
-
-        <div className="space-y-4 pt-4">
-            {settings.activeModel !== 'gemini' ? (
-                <>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        API Key for <span className="text-blue-600 dark:text-blue-500 font-bold capitalize">{settings.activeModel}</span>
-                    </label>
-                    <div className="flex gap-4">
-                        <div className="relative flex-1">
-                            <Input 
-                                type="password" 
-                                placeholder={`sk-...`}
-                                value={keyInput}
-                                onChange={(e) => setKeyInput(e.target.value)}
-                                className="pr-10"
-                            />
-                            {keys[settings.activeModel] && (
-                                <div className="absolute right-3 top-3 text-emerald-500">
-                                    <ShieldCheck className="w-5 h-5" />
-                                </div>
+        
+        <div className="space-y-4">
+            {PROVIDERS.map(p => {
+                const isVerified = verifyResults[p.id] === 'success';
+                const isError = verifyResults[p.id] === 'error';
+                const hasKey = !!keys[p.id] || p.id === 'google';
+                
+                return (
+                    <div key={p.id} className="p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-2 h-2 rounded-full ${settings.providers[p.id].enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                <span className="font-semibold text-slate-900 dark:text-slate-200">{p.name}</span>
+                                {isVerified && <Badge color="green">Active</Badge>}
+                            </div>
+                            {p.id !== 'google' && (
+                                <Switch 
+                                    checked={settings.providers[p.id].enabled}
+                                    onChange={(c) => {
+                                        const newS = {...settings};
+                                        newS.providers[p.id].enabled = c;
+                                        saveSettings(newS);
+                                    }}
+                                />
                             )}
                         </div>
-                        <Button onClick={handleSaveKey} isLoading={isVerifying} disabled={!keyInput}>
-                            {keys[settings.activeModel] ? 'Update Key' : 'Save Key'}
-                        </Button>
+                        
+                        {p.id === 'google' ? (
+                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 text-xs bg-blue-50 dark:bg-blue-900/10 p-2 rounded">
+                                <CheckCircle2 className="w-4 h-4"/> Managed via Environment
+                            </div>
+                        ) : (
+                            <div className="flex gap-2">
+                                <Input 
+                                    type="password" 
+                                    placeholder={p.id === 'ollama' ? 'Local URL (optional)' : `API Key for ${p.name}`}
+                                    value={keys[p.id] || ''}
+                                    onChange={(e) => handleKeyChange(p.id, e.target.value)}
+                                    className="text-xs"
+                                />
+                                <Button 
+                                    size="sm" 
+                                    variant="secondary"
+                                    isLoading={verifyingProvider === p.id}
+                                    onClick={() => saveKey(p.id)}
+                                >
+                                    {isVerified ? 'Updated' : 'Test & Save'}
+                                </Button>
+                            </div>
+                        )}
+                        {isError && <p className="text-xs text-red-500 mt-2">Connection failed. Check key.</p>}
                     </div>
-                </>
-            ) : (
-                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 text-sm bg-blue-50 dark:bg-blue-500/10 p-3 rounded-lg border border-blue-200 dark:border-blue-500/20">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Gemini API Key is managed securely via environment.</span>
-                </div>
-            )}
-            
-            {verifyStatus === 'success' && (
-                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm bg-emerald-50 dark:bg-emerald-500/10 p-3 rounded-lg border border-emerald-200 dark:border-emerald-500/20">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>API Key verified and encrypted.</span>
-                </div>
-            )}
-             {verifyStatus === 'error' && (
-                <div className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm bg-red-50 dark:bg-red-500/10 p-3 rounded-lg border border-red-200 dark:border-red-500/20">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>Failed to verify API key.</span>
-                </div>
-            )}
+                );
+            })}
         </div>
+      </Card>
+      
+      <Card className="space-y-6">
+          <div className="flex items-center gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
+              <RefreshCw className="w-5 h-5 text-purple-500" />
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Default Models</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {Object.entries(settings.defaults).map(([task, currentId]) => (
+                   <div key={task}>
+                       <label className="block text-xs font-medium text-slate-500 uppercase mb-1">{task} Model</label>
+                       <select 
+                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2 text-sm"
+                          value={currentId}
+                          onChange={(e) => {
+                              const newS = {...settings};
+                              // @ts-ignore
+                              newS.defaults[task] = e.target.value;
+                              saveSettings(newS);
+                          }}
+                       >
+                           {MODELS.map(m => (
+                               <option key={m.id} value={m.id}>{m.name} ({m.providerId})</option>
+                           ))}
+                       </select>
+                   </div>
+               ))}
+          </div>
       </Card>
 
       <Card className="space-y-6">
